@@ -1,18 +1,29 @@
 import { assertVaultCryptoCapabilities } from "@/vault/capabilities"
-import { createMobileVaultCrypto } from "@/vault/vaultCrypto"
+import type { VaultCrypto } from "@/vault/types"
 
-const vaultCrypto = createMobileVaultCrypto()
+let vaultCrypto: VaultCrypto | null = null
+
+async function getVaultCrypto() {
+  assertVaultCryptoCapabilities()
+
+  if (vaultCrypto === null) {
+    const { createMobileVaultCrypto } = await import("@/vault/vaultCrypto")
+    vaultCrypto = createMobileVaultCrypto()
+  }
+
+  return vaultCrypto
+}
 
 export async function hasImportedVaultBackup() {
-  return vaultCrypto.hasStoredVault()
+  return (await getVaultCrypto()).hasStoredVault()
 }
 
 export async function importEncryptedVaultBackup(serializedBackup: string) {
-  assertVaultCryptoCapabilities()
-
-  return vaultCrypto.importVaultBackup(serializedBackup)
+  return (await getVaultCrypto()).importVaultBackup(serializedBackup)
 }
 
-export function lockVault() {
-  vaultCrypto.lockVault()
+export async function lockVault() {
+  if (vaultCrypto !== null) {
+    vaultCrypto.lockVault()
+  }
 }

@@ -1,7 +1,7 @@
 import { createVaultCrypto } from "@password-manager/vault-crypto"
 
 import { VAULT_BACKUP_STORAGE_KEY } from "@/vault/constants"
-import type { VaultStorageAdapter } from "@/vault/storage"
+import { createMemoryVaultStorage } from "@/vault/memoryStorage"
 import type { VaultBackup } from "@/vault/types"
 
 const syntheticVaultBackup: VaultBackup = {
@@ -29,23 +29,9 @@ const syntheticVaultBackup: VaultBackup = {
   }
 }
 
-function createMemoryStorage(): VaultStorageAdapter {
-  const values = new Map<string, string>()
-
-  return {
-    get: async (key) => values.get(key) ?? null,
-    set: async (key, value) => {
-      values.set(key, value)
-    },
-    remove: async (key) => {
-      values.delete(key)
-    }
-  }
-}
-
 describe("vault crypto integration", () => {
   it("imports and detects a stored encrypted vault backup", async () => {
-    const storage = createMemoryStorage()
+    const storage = createMemoryVaultStorage()
     const vaultCrypto = createVaultCrypto({
       openpgp: {},
       argon2: {},
@@ -61,7 +47,7 @@ describe("vault crypto integration", () => {
   })
 
   it("rejects unsupported vault backups before storing them", async () => {
-    const storage = createMemoryStorage()
+    const storage = createMemoryVaultStorage()
     const vaultCrypto = createVaultCrypto({
       openpgp: {},
       argon2: {},

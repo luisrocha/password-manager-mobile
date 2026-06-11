@@ -1,5 +1,5 @@
-import argon2 from "argon2-browser"
-import * as openpgp from "openpgp"
+import argon2 from "argon2-browser/dist/argon2-bundled.min"
+import * as openpgp from "openpgp/dist/openpgp.min.mjs"
 
 import { createVaultCrypto as createSharedVaultCrypto } from "@password-manager/vault-crypto"
 
