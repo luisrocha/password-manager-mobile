@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Password Manager",
+    "slug": "password-manager-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "password-manager",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.luisrocha.passwordmanager",
+      "adaptiveIcon": {
+        "backgroundColor": "#101820"
+      },
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Password Manager to scan vault import QR codes."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
+      "expo-sqlite"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "root": "app"
+      },
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}
