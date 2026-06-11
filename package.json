@@ -16,6 +16,8 @@
     "ci": "npm run typecheck && npm run style && npm test && npm run security"
   },
   "dependencies": {
+    "@babel/runtime": "7.29.7",
+    "@password-manager/vault-crypto": "file:../password-manager-vault-crypto",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tamagui/animations-react-native": "2.2.0",
     "@tamagui/config": "2.2.0",
