@@ -32,4 +32,22 @@ describe("vault crypto capabilities", () => {
       value: originalCrypto
     })
   })
+
+  it("reports missing getRandomValues separately from crypto", () => {
+    const originalCrypto = globalThis.crypto
+
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: {
+        subtle: {}
+      }
+    })
+
+    expect(getVaultCryptoCapabilityStatus().missing).toContain("crypto.getRandomValues")
+
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: originalCrypto
+    })
+  })
 })

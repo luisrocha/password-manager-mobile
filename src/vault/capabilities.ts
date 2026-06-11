@@ -1,10 +1,14 @@
+import { getMobileCryptoRuntimeInstallError } from "@/runtime/installMobileCryptoRuntime"
+
 export interface VaultCryptoCapabilityStatus {
   hasAtob: boolean
   hasBtoa: boolean
   hasCrypto: boolean
   hasCryptoSubtle: boolean
+  hasGetRandomValues: boolean
   hasTextDecoder: boolean
   hasTextEncoder: boolean
+  installError: string | null
   missing: string[]
 }
 
@@ -13,6 +17,7 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
     atob?: unknown
     btoa?: unknown
     crypto?: {
+      getRandomValues?: unknown
       subtle?: unknown
     }
     TextDecoder?: unknown
@@ -28,8 +33,13 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
       globalScope.crypto !== null &&
       typeof globalScope.crypto.subtle === "object" &&
       globalScope.crypto.subtle !== null,
+    hasGetRandomValues:
+      typeof globalScope.crypto === "object" &&
+      globalScope.crypto !== null &&
+      typeof globalScope.crypto.getRandomValues === "function",
     hasTextDecoder: typeof globalScope.TextDecoder === "function",
-    hasTextEncoder: typeof globalScope.TextEncoder === "function"
+    hasTextEncoder: typeof globalScope.TextEncoder === "function",
+    installError: getMobileCryptoRuntimeInstallError()
   }
 
   return {
@@ -38,6 +48,7 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
       atob: status.hasAtob,
       btoa: status.hasBtoa,
       crypto: status.hasCrypto,
+      "crypto.getRandomValues": status.hasGetRandomValues,
       "crypto.subtle": status.hasCryptoSubtle,
       TextDecoder: status.hasTextDecoder,
       TextEncoder: status.hasTextEncoder

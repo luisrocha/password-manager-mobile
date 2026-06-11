@@ -33,3 +33,18 @@ npm run style
 npm test
 npm run security
 ```
+
+## Native Crypto Runtime
+
+Vault crypto needs WebCrypto APIs such as `crypto.getRandomValues` and
+`crypto.subtle`. The app installs `react-native-quick-crypto` at startup for
+those APIs.
+
+Because this is a native module, full crypto diagnostics require a custom Expo
+development build. Expo Go can run the app shell, but it cannot load the native
+crypto runtime.
+
+```bash
+npx expo prebuild
+npx expo run:android
+```

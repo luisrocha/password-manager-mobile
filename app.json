@@ -12,10 +12,15 @@
       "adaptiveIcon": {
         "backgroundColor": "#101820"
       },
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
+      "react-native-quick-crypto",
       [
         "expo-camera",
         {
@@ -40,6 +45,9 @@
       "eas": {
         "projectId": ""
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.luisrocha.passwordmanager"
     }
   }
 }

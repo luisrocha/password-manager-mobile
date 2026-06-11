@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 
 import { getVaultCryptoCapabilityStatus } from "@/vault/capabilities"
+import { ensureMobileCryptoRuntime } from "@/runtime/installMobileCryptoRuntime"
 import type { VaultCryptoSelfTestResult } from "@/vault/selfTest"
 
 type DiagnosticsState =
@@ -18,8 +19,11 @@ export default function CryptoDiagnosticsScreen() {
     setDiagnostics({ status: "running" })
 
     try {
-      if (capabilities.missing.length > 0) {
-        throw new Error(`Missing runtime support: ${capabilities.missing.join(", ")}`)
+      await ensureMobileCryptoRuntime()
+      const latestCapabilities = getVaultCryptoCapabilityStatus()
+
+      if (latestCapabilities.missing.length > 0) {
+        throw new Error(`Missing runtime support: ${latestCapabilities.missing.join(", ")}`)
       }
 
       const { runVaultCryptoSelfTest } = await import("@/vault/selfTest")
@@ -42,6 +46,9 @@ export default function CryptoDiagnosticsScreen() {
       <Text style={styles.body}>
         Runtime: {capabilities.missing.length === 0 ? "ready" : capabilities.missing.join(", ")}
       </Text>
+      {capabilities.installError ? (
+        <Text style={styles.error}>Install error: {capabilities.installError}</Text>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         disabled={diagnostics.status === "running"}
