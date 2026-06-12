@@ -3,5 +3,7 @@ node_modules/
 coverage/
 dist/
 web-build/
+android/
+ios/
 AGENTS.md
 MOBILE_APP_PLAN.md

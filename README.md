@@ -37,12 +37,14 @@ npm run security
 ## Native Crypto Runtime
 
 Vault crypto needs WebCrypto APIs such as `crypto.getRandomValues` and
-`crypto.subtle`. The app installs `react-native-quick-crypto` at startup for
-those APIs.
+`crypto.subtle`. The app installs `react-native-quick-crypto` lazily before
+running vault crypto operations.
 
 Because this is a native module, full crypto diagnostics require a custom Expo
 development build. Expo Go can run the app shell, but it cannot load the native
-crypto runtime.
+crypto runtime. If you see `QuickBase64 could not be found`, you are running a
+native binary that was built before the native crypto modules were installed, or
+you are running Expo Go.
 
 ```bash
 npx expo prebuild
