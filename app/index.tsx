@@ -16,6 +16,13 @@ export default function HomeScreen() {
             <Text style={styles.buttonText}>Import vault</Text>
           </Pressable>
         </Link>
+        {__DEV__ ? (
+          <Link href="/crypto-diagnostics" asChild>
+            <Pressable style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>Crypto diagnostics</Text>
+            </Pressable>
+          </Link>
+        ) : null}
       </View>
     </View>
   )
@@ -70,6 +77,19 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff8ef",
     fontSize: 16,
+    fontWeight: "800"
+  },
+  secondaryButton: {
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#c7b99f"
+  },
+  secondaryButtonText: {
+    color: "#3b4650",
+    fontSize: 15,
     fontWeight: "800"
   }
 })

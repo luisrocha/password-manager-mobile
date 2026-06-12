@@ -1,14 +1,14 @@
 import { useState } from "react"
-import { Pressable, StyleSheet, Text, View } from "react-native"
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 
 import { getVaultCryptoCapabilityStatus } from "@/vault/capabilities"
 import { ensureMobileCryptoRuntime } from "@/runtime/installMobileCryptoRuntime"
-import type { VaultCryptoSelfTestResult } from "@/vault/selfTest"
+import type { VaultCryptoDebugSelfTestResult } from "@/vault/debugSelfTest"
 
 type DiagnosticsState =
   | { status: "idle" }
   | { status: "running" }
-  | { status: "passed"; result: VaultCryptoSelfTestResult }
+  | { status: "completed"; result: VaultCryptoDebugSelfTestResult }
   | { status: "failed"; error: string }
 
 export default function CryptoDiagnosticsScreen() {
@@ -26,11 +26,15 @@ export default function CryptoDiagnosticsScreen() {
         throw new Error(`Missing runtime support: ${latestCapabilities.missing.join(", ")}`)
       }
 
-      const { runVaultCryptoSelfTest } = await import("@/vault/selfTest")
+      // Load OpenPGP only after the native WebCrypto runtime is installed.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { runVaultCryptoDebugSelfTest } = require("@/vault/debugSelfTest") as {
+        runVaultCryptoDebugSelfTest: () => Promise<VaultCryptoDebugSelfTestResult>
+      }
 
       setDiagnostics({
-        status: "passed",
-        result: await runVaultCryptoSelfTest()
+        status: "completed",
+        result: await runVaultCryptoDebugSelfTest()
       })
     } catch (error) {
       setDiagnostics({
@@ -41,7 +45,7 @@ export default function CryptoDiagnosticsScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={styles.screen}>
       <Text style={styles.title}>Crypto diagnostics</Text>
       <Text style={styles.body}>
         Runtime: {capabilities.missing.length === 0 ? "ready" : capabilities.missing.join(", ")}
@@ -59,21 +63,28 @@ export default function CryptoDiagnosticsScreen() {
           {diagnostics.status === "running" ? "Running..." : "Run self-test"}
         </Text>
       </Pressable>
-      {diagnostics.status === "passed" ? (
-        <Text style={styles.result}>
-          Passed: {Object.values(diagnostics.result).every(Boolean) ? "yes" : "no"}
-        </Text>
+      {diagnostics.status === "completed" ? (
+        <View style={styles.output}>
+          <Text style={diagnostics.result.failedStep ? styles.error : styles.result}>
+            {diagnostics.result.failedStep
+              ? `Failed at: ${diagnostics.result.failedStep}`
+              : "All diagnostic steps passed"}
+          </Text>
+          <Text selectable style={styles.debugText}>
+            {JSON.stringify(diagnostics.result.steps, null, 2)}
+          </Text>
+        </View>
       ) : null}
       {diagnostics.status === "failed" ? (
         <Text style={styles.error}>Failed: {diagnostics.error}</Text>
       ) : null}
-    </View>
+    </ScrollView>
   )
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     gap: 16,
     padding: 24,
@@ -105,6 +116,15 @@ const styles = StyleSheet.create({
     color: "#a8d8a0",
     fontSize: 16,
     fontWeight: "700"
+  },
+  output: {
+    gap: 12
+  },
+  debugText: {
+    color: "#f4efe6",
+    fontFamily: "monospace",
+    fontSize: 12,
+    lineHeight: 18
   },
   error: {
     color: "#ffb4a8",

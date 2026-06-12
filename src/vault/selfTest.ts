@@ -1,10 +1,9 @@
-import argon2 from "argon2-browser/dist/argon2-bundled.min"
-import * as openpgp from "openpgp/dist/openpgp.min.mjs"
-
 import { createVaultCrypto as createSharedVaultCrypto } from "@password-manager/vault-crypto"
 
 import { assertVaultCryptoCapabilities } from "@/vault/capabilities"
 import { createMemoryVaultStorage } from "@/vault/memoryStorage"
+import { mobileArgon2 } from "@/vault/mobileArgon2"
+import { mobileOpenPgp } from "@/vault/mobileOpenPgp"
 import type { VaultCrypto } from "@/vault/types"
 
 export interface VaultCryptoSelfTestResult {
@@ -18,8 +17,8 @@ export async function runVaultCryptoSelfTest(): Promise<VaultCryptoSelfTestResul
   assertVaultCryptoCapabilities()
 
   const vaultCrypto = createSharedVaultCrypto({
-    openpgp,
-    argon2,
+    openpgp: mobileOpenPgp,
+    argon2: mobileArgon2,
     storage: createMemoryVaultStorage(),
     storageKey: "passwordManager.selfTestVault"
   }) as VaultCrypto & {

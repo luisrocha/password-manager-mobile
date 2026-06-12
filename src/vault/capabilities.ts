@@ -8,6 +8,9 @@ export interface VaultCryptoCapabilityStatus {
   hasGetRandomValues: boolean
   hasTextDecoder: boolean
   hasTextEncoder: boolean
+  hasReadableStream: boolean
+  hasTransformStream: boolean
+  hasWritableStream: boolean
   installError: string | null
   missing: string[]
 }
@@ -22,6 +25,9 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
     }
     TextDecoder?: unknown
     TextEncoder?: unknown
+    ReadableStream?: unknown
+    TransformStream?: unknown
+    WritableStream?: unknown
   }
 
   const status = {
@@ -39,6 +45,9 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
       typeof globalScope.crypto.getRandomValues === "function",
     hasTextDecoder: typeof globalScope.TextDecoder === "function",
     hasTextEncoder: typeof globalScope.TextEncoder === "function",
+    hasReadableStream: typeof globalScope.ReadableStream === "function",
+    hasTransformStream: typeof globalScope.TransformStream === "function",
+    hasWritableStream: typeof globalScope.WritableStream === "function",
     installError: getMobileCryptoRuntimeInstallError()
   }
 
@@ -51,7 +60,10 @@ export function getVaultCryptoCapabilityStatus(): VaultCryptoCapabilityStatus {
       "crypto.getRandomValues": status.hasGetRandomValues,
       "crypto.subtle": status.hasCryptoSubtle,
       TextDecoder: status.hasTextDecoder,
-      TextEncoder: status.hasTextEncoder
+      TextEncoder: status.hasTextEncoder,
+      ReadableStream: status.hasReadableStream,
+      TransformStream: status.hasTransformStream,
+      WritableStream: status.hasWritableStream
     })
       .filter(([, isAvailable]) => !isAvailable)
       .map(([name]) => name)
