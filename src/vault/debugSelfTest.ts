@@ -1,5 +1,3 @@
-import * as openpgp from "openpgp"
-
 import { createVaultCrypto as createSharedVaultCrypto } from "@password-manager/vault-crypto"
 
 import { getVaultCryptoCapabilityStatus } from "@/vault/capabilities"
@@ -136,112 +134,6 @@ async function runArgon2Probe() {
   }
 }
 
-async function runOpenPgpPasswordProbe() {
-  const message = await openpgp.createMessage({ text: "openpgp password probe" })
-  const encrypted = await openpgp.encrypt({
-    message,
-    passwords: ["diagnostic password"]
-  })
-  const encryptedMessage = encrypted.toString()
-  const parsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const decryptedMessage = await captureNestedStage("message.decrypt(password)", () =>
-    parsedMessage.decrypt(undefined, ["diagnostic password"], undefined)
-  )
-  const literalText = await captureNestedStage("decryptedMessage.getText()", () =>
-    Promise.resolve(decryptedMessage.getText())
-  )
-  const mobileParsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const { data } = await captureNestedStage("mobileOpenPgp.decrypt(password)", () =>
-    mobileOpenPgp.decrypt({
-      format: "utf8",
-      message: mobileParsedMessage,
-      passwords: ["diagnostic password"]
-    })
-  )
-  const publicParsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const publicDecryptError = await captureExpectedError(() =>
-    openpgp.decrypt({
-      format: "utf8",
-      message: publicParsedMessage,
-      passwords: ["diagnostic password"]
-    })
-  )
-
-  return {
-    decryptedText: data.toString(),
-    encryptedLength: encrypted.toString().length,
-    literalText: literalText.toString(),
-    publicDecryptError
-  }
-}
-
-async function captureExpectedError(run: () => Promise<unknown>) {
-  try {
-    await run()
-    return null
-  } catch (error) {
-    return serializeError(error)
-  }
-}
-
-async function captureNestedStage<T>(name: string, run: () => Promise<T>) {
-  try {
-    return await run()
-  } catch (error) {
-    const wrapped = new Error(`nested stage failed: ${name}`)
-    wrapped.cause = error
-    throw wrapped
-  }
-}
-
-async function runOpenPgpKeyProbe() {
-  const keys = await openpgp.generateKey({
-    curve: "curve25519" as never,
-    type: "ecc",
-    userIDs: [{ name: "Diagnostics Key Probe" }]
-  })
-  const publicKey = await openpgp.readKey({ armoredKey: keys.publicKey })
-  const privateKey = await openpgp.readPrivateKey({ armoredKey: keys.privateKey })
-  const message = await openpgp.createMessage({ text: "openpgp key probe" })
-  const encrypted = await openpgp.encrypt({
-    encryptionKeys: publicKey,
-    message
-  })
-  const encryptedMessage = encrypted.toString()
-  const parsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const decryptedMessage = await captureNestedStage("message.decrypt(key)", () =>
-    parsedMessage.decrypt([privateKey], undefined, undefined)
-  )
-  const literalText = await captureNestedStage("decryptedMessage.getText()", () =>
-    Promise.resolve(decryptedMessage.getText())
-  )
-  const mobileParsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const { data } = await captureNestedStage("mobileOpenPgp.decrypt(key)", () =>
-    mobileOpenPgp.decrypt({
-      decryptionKeys: privateKey,
-      format: "utf8",
-      message: mobileParsedMessage
-    })
-  )
-  const publicParsedMessage = await openpgp.readMessage({ armoredMessage: encryptedMessage })
-  const publicDecryptError = await captureExpectedError(() =>
-    openpgp.decrypt({
-      decryptionKeys: privateKey,
-      format: "utf8",
-      message: publicParsedMessage
-    })
-  )
-
-  return {
-    decryptedText: data.toString(),
-    encryptedLength: encrypted.toString().length,
-    literalText: literalText.toString(),
-    publicDecryptError,
-    privateKeyLength: keys.privateKey.length,
-    publicKeyLength: keys.publicKey.length
-  }
-}
-
 export async function runVaultCryptoDebugSelfTest(): Promise<VaultCryptoDebugSelfTestResult> {
   const steps: DebugStep[] = []
   const masterPassword = "diagnostic master password"
@@ -252,8 +144,6 @@ export async function runVaultCryptoDebugSelfTest(): Promise<VaultCryptoDebugSel
     await captureStep(steps, "runtime capabilities", async () => getVaultCryptoCapabilityStatus())
     await captureStep(steps, "webcrypto aes-gcm probe", runWebCryptoProbe)
     await captureStep(steps, "argon2 probe", runArgon2Probe)
-    await captureStep(steps, "openpgp password low-level decrypt probe", runOpenPgpPasswordProbe)
-    await captureStep(steps, "openpgp key low-level decrypt probe", runOpenPgpKeyProbe)
 
     vaultCrypto = await captureStep(steps, "create shared vault crypto", async () => {
       return createSharedVaultCrypto({

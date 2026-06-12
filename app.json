@@ -11,25 +11,17 @@
       "package": "com.luisrocha.passwordmanager",
       "adaptiveIcon": {
         "backgroundColor": "#101820"
-      },
-      "permissions": ["CAMERA", "android.permission.CAMERA", "android.permission.RECORD_AUDIO"]
+      }
     },
     "plugins": [
       "expo-router",
       "react-native-quick-crypto",
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow Password Manager to scan vault import QR codes."
-        }
-      ],
-      [
         "expo-secure-store",
         {
           "configureAndroidBackup": false
         }
-      ],
-      "expo-sqlite"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
