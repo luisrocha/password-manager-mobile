@@ -1,19 +1,47 @@
-import { Link } from "expo-router"
+import { Link, useFocusEffect } from "expo-router"
+import { useCallback, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 
 import { env } from "@/config/env"
+import { hasImportedVaultBackup } from "@/vault/vaultService"
 
 export default function HomeScreen() {
+  const [hasImportedVault, setHasImportedVault] = useState(false)
+
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true
+
+      hasImportedVaultBackup()
+        .then((isImported) => {
+          if (isActive) setHasImportedVault(isImported)
+        })
+        .catch(() => {
+          if (isActive) setHasImportedVault(false)
+        })
+
+      return () => {
+        isActive = false
+      }
+    }, [])
+  )
+
   return (
     <View style={styles.screen}>
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Password Manager Mobile</Text>
         <Text style={styles.title}>Unlock your vault.</Text>
-        <Text style={styles.body}>Import your encrypted vault backup to get started.</Text>
+        <Text style={styles.body}>
+          {hasImportedVault
+            ? "Your encrypted vault backup is stored on this device."
+            : "Import your encrypted vault backup to get started."}
+        </Text>
         <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
         <Link href="/import-vault" asChild>
           <Pressable style={styles.button}>
-            <Text style={styles.buttonText}>Import vault</Text>
+            <Text style={styles.buttonText}>
+              {hasImportedVault ? "Replace vault" : "Import vault"}
+            </Text>
           </Pressable>
         </Link>
         {__DEV__ ? (
