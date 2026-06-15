@@ -51,8 +51,16 @@ export async function hasImportedVaultBackup() {
   return (await getVaultCrypto()).hasStoredVault()
 }
 
+export async function isVaultUnlocked() {
+  return (await getVaultCrypto()).isVaultUnlocked()
+}
+
 export async function importEncryptedVaultBackup(serializedBackup: string) {
   return (await getVaultCrypto()).importVaultBackup(normalizeVaultBackupImport(serializedBackup))
+}
+
+export async function unlockImportedVault(masterPassword: string) {
+  return (await getVaultCrypto()).unlockVault(masterPassword)
 }
 
 export async function importVaultBackupWithPairingCode(code: string) {
@@ -109,10 +117,14 @@ async function fetchPairingCode(code: string) {
 }
 
 async function parsePairingResponse(response: Response) {
+  return parseJsonResponse(response, "pairing_failed")
+}
+
+async function parseJsonResponse(response: Response, errorCode: string) {
   try {
     return await response.json()
   } catch {
-    throw new Error("pairing_failed")
+    throw new Error(errorCode)
   }
 }
 

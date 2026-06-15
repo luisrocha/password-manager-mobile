@@ -128,8 +128,7 @@ describe("vaultService", () => {
 
     jest.doMock("@/config/env", () => ({
       env: {
-        apiBaseUrl: "https://vault.localhost",
-        apiToken: "test-token"
+        apiBaseUrl: "https://vault.localhost"
       }
     }))
     jest.doMock("@/runtime/installMobileCryptoRuntime", () => ({
@@ -176,8 +175,7 @@ describe("vaultService", () => {
 
     jest.doMock("@/config/env", () => ({
       env: {
-        apiBaseUrl: "https://vault.localhost",
-        apiToken: "test-token"
+        apiBaseUrl: "https://vault.localhost"
       }
     }))
 
@@ -197,8 +195,7 @@ describe("vaultService", () => {
 
     jest.doMock("@/config/env", () => ({
       env: {
-        apiBaseUrl: "https://vault.localhost",
-        apiToken: "test-token"
+        apiBaseUrl: "https://vault.localhost"
       }
     }))
 
@@ -211,5 +208,39 @@ describe("vaultService", () => {
     await expect(importVaultBackupWithPairingCode("ABCD-EFGH")).rejects.toThrow(
       "pairing_network_failed"
     )
+  })
+
+  it("unlocks imported vaults locally", async () => {
+    const unlockVault = jest.fn(() => Promise.resolve(true))
+
+    jest.doMock("@/config/env", () => ({
+      env: {
+        apiBaseUrl: "https://vault.localhost"
+      }
+    }))
+    jest.doMock("@/runtime/installMobileCryptoRuntime", () => ({
+      ensureMobileCryptoRuntime: jest.fn(() => Promise.resolve(true))
+    }))
+    jest.doMock("@/vault/capabilities", () => ({
+      assertVaultCryptoCapabilities: jest.fn()
+    }))
+    jest.doMock("@/vault/vaultCrypto", () => ({
+      createMobileVaultCrypto: jest.fn(() => ({
+        hasStoredVault: jest.fn(),
+        importVaultBackup: jest.fn(),
+        isVaultUnlocked: jest.fn(() => false),
+        unlockVault,
+        lockVault: jest.fn()
+      }))
+    }))
+
+    const { unlockImportedVault } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/vault/vaultService") as {
+        unlockImportedVault: (masterPassword: string) => Promise<unknown>
+      }
+
+    await expect(unlockImportedVault("master-password")).resolves.toBe(true)
+    expect(unlockVault).toHaveBeenCalledWith("master-password")
   })
 })
