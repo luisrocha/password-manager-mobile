@@ -148,10 +148,10 @@ describe("vaultService", () => {
     const { importVaultBackupWithPairingCode } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("@/vault/vaultService") as {
-        importVaultBackupWithPairingCode: (code: string) => Promise<unknown>
+        importVaultBackupWithPairingCode: (code: string, deviceName?: string) => Promise<unknown>
       }
 
-    await expect(importVaultBackupWithPairingCode("ABCD-EFGH")).resolves.toEqual(
+    await expect(importVaultBackupWithPairingCode("ABCD-EFGH", "Luis Pixel")).resolves.toEqual(
       expandedVaultBackup
     )
     expect(fetchMock).toHaveBeenCalledWith(
@@ -159,7 +159,7 @@ describe("vaultService", () => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: "ABCD-EFGH" })
+        body: JSON.stringify({ code: "ABCD-EFGH", deviceName: "Luis Pixel" })
       }
     )
     expect(importVaultBackup).toHaveBeenCalledWith(JSON.stringify(expandedVaultBackup))

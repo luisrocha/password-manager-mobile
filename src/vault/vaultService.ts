@@ -63,8 +63,8 @@ export async function unlockImportedVault(masterPassword: string) {
   return (await getVaultCrypto()).unlockVault(masterPassword)
 }
 
-export async function importVaultBackupWithPairingCode(code: string) {
-  const serializedBackup = await redeemVaultPairingCode(code)
+export async function importVaultBackupWithPairingCode(code: string, deviceName?: string) {
+  const serializedBackup = await redeemVaultPairingCode(code, deviceName)
 
   return importEncryptedVaultBackup(serializedBackup)
 }
@@ -85,8 +85,8 @@ export function normalizeVaultBackupImport(serializedBackup: string) {
   return JSON.stringify(expandMobileVaultTransferPayload(parsedBackup))
 }
 
-async function redeemVaultPairingCode(code: string) {
-  const response = await fetchPairingCode(code)
+async function redeemVaultPairingCode(code: string, deviceName?: string) {
+  const response = await fetchPairingCode(code, deviceName)
   const body = (await parsePairingResponse(response)) as {
     encryptedVaultBackup?: unknown
     code?: unknown
@@ -104,12 +104,15 @@ async function redeemVaultPairingCode(code: string) {
   return body.encryptedVaultBackup
 }
 
-async function fetchPairingCode(code: string) {
+async function fetchPairingCode(code: string, deviceName?: string) {
+  const body: { code: string; deviceName?: string } = { code }
+  if (deviceName?.trim()) body.deviceName = deviceName.trim()
+
   try {
     return await fetch(`${env.apiBaseUrl}/api/mobile/vault_pairings/redeem`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code })
+      body: JSON.stringify(body)
     })
   } catch {
     throw new Error("pairing_network_failed")

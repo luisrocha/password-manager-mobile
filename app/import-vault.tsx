@@ -1,6 +1,6 @@
 import { Link, router } from "expo-router"
 import { useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native"
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native"
 
 import { env } from "@/config/env"
 import { importVaultBackupWithPairingCode } from "@/vault/vaultService"
@@ -35,6 +35,7 @@ function getImportErrorMessage(error: unknown) {
 
 export default function ImportVaultScreen() {
   const [pairingCode, setPairingCode] = useState("")
+  const [deviceName, setDeviceName] = useState(() => inferDefaultDeviceName())
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<ImportStatus>("idle")
   const canImportPairingCode = pairingCode.length === 9 && status !== "importing"
@@ -57,7 +58,7 @@ export default function ImportVaultScreen() {
     setStatus("importing")
 
     try {
-      await importVaultBackupWithPairingCode(code)
+      await importVaultBackupWithPairingCode(code, deviceName)
       setStatus("imported")
     } catch (importError) {
       console.error(importError)
@@ -71,6 +72,17 @@ export default function ImportVaultScreen() {
       <Text style={styles.title}>Import vault key</Text>
       <Text style={styles.body}>Enter the pairing code from the web app.</Text>
       <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
+      <TextInput
+        autoCapitalize="words"
+        autoCorrect={false}
+        editable={status !== "importing"}
+        maxLength={120}
+        onChangeText={setDeviceName}
+        placeholder="Device name"
+        placeholderTextColor="#8f8778"
+        style={styles.input}
+        value={deviceName}
+      />
       <TextInput
         autoCapitalize="characters"
         autoCorrect={false}
@@ -117,6 +129,29 @@ function formatPairingCode(value: string) {
   return `${code.slice(0, 4)}-${code.slice(4)}`
 }
 
+function inferDefaultDeviceName() {
+  const constants = Platform.constants as Record<string, unknown>
+  const values = [
+    constants.Manufacturer,
+    constants.Brand,
+    constants.Model,
+    constants.model,
+    constants.DeviceName,
+    constants.deviceName
+  ]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean)
+
+  const uniqueValues = [...new Set(values)]
+  if (uniqueValues.length > 0) return uniqueValues.join(" ")
+
+  if (Platform.OS === "android") return "Android device"
+  if (Platform.OS === "ios") return "iPhone"
+
+  return "Mobile device"
+}
+
 const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
@@ -138,6 +173,13 @@ const styles = StyleSheet.create({
     color: "#b9aa94",
     fontSize: 13,
     lineHeight: 19
+  },
+  input: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: "#f4efe6",
+    color: "#101820",
+    fontSize: 16
   },
   codeInput: {
     padding: 16,
