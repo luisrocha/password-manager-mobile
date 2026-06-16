@@ -12,6 +12,7 @@ import {
 } from "@/vault/vaultService"
 
 type DetailStatus = "loading" | "ready" | "locked" | "missing" | "failed"
+const CLIPBOARD_CLEAR_DELAY_MS = 30_000
 
 export default function CredentialDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
@@ -106,6 +107,12 @@ export default function CredentialDetailScreen() {
     await Clipboard.setStringAsync(payload[field])
     setCopyStatus(`Copied ${field}`)
     setTimeout(() => setCopyStatus(null), 1200)
+    setTimeout(() => clearClipboardIfUnchanged(payload[field]), CLIPBOARD_CLEAR_DELAY_MS)
+  }
+
+  async function clearClipboardIfUnchanged(value: string) {
+    const currentValue = await Clipboard.getStringAsync()
+    if (currentValue === value) await Clipboard.setStringAsync("")
   }
 
   async function lock() {

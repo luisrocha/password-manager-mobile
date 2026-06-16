@@ -11,5 +11,6 @@ jest.mock("react-native-quick-crypto", () => ({
 }))
 
 jest.mock("expo-clipboard", () => ({
+  getStringAsync: jest.fn(() => Promise.resolve("")),
   setStringAsync: jest.fn(() => Promise.resolve(true))
 }))
