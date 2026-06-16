@@ -99,6 +99,12 @@ export async function getCachedCredentials(): Promise<CachedCredentials> {
   return emptyCredentialCache()
 }
 
+export async function getCachedCredential(id: string) {
+  const cache = await getCachedCredentials()
+
+  return cache.credentials.find((credential) => credential.id === id) ?? null
+}
+
 export async function clearCachedCredentials() {
   await AsyncStorage.removeItem(SYNCED_CREDENTIALS_STORAGE_KEY)
 }

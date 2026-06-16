@@ -1,4 +1,4 @@
-import { Link, useFocusEffect } from "expo-router"
+import { Link, router, useFocusEffect, type Href } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
@@ -255,14 +255,19 @@ function CredentialSyncSummary({
           showsVerticalScrollIndicator={false}
         >
           {credentials.map((credential) => (
-            <View key={credential.id} style={styles.credentialRow}>
+            <Pressable
+              accessibilityRole="button"
+              key={credential.id}
+              onPress={() => router.push(credentialDetailHref(credential.id))}
+              style={styles.credentialRow}
+            >
               <Text style={styles.credentialName}>
                 {credential.displayName || credential.domain || "Untitled"}
               </Text>
               <Text style={styles.credentialMeta}>
                 {[credential.domain, credential.category].filter(Boolean).join(" · ")}
               </Text>
-            </View>
+            </Pressable>
           ))}
         </ScrollView>
       ) : (
@@ -280,6 +285,10 @@ function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
   if (lastSyncedAt) return `Last synced ${new Date(lastSyncedAt).toLocaleString()}`
 
   return "Sync after unlocking to store items on this device."
+}
+
+function credentialDetailHref(id: string): Href {
+  return `/credentials/${encodeURIComponent(id)}` as Href
 }
 
 const styles = StyleSheet.create({

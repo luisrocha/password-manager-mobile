@@ -161,4 +161,33 @@ describe("mobileSync", () => {
 
     await expect(getCachedCredentials()).resolves.toEqual({ credentials: [], syncedAt: "" })
   })
+
+  it("finds cached credentials by id", async () => {
+    mockStorage()
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "1",
+            displayName: "GitHub",
+            domain: "github.com",
+            category: "login",
+            encryptedSecretPayload: "-----BEGIN PGP MESSAGE-----",
+            updatedAt: "2026-06-16T10:00:00Z"
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z"
+      })
+    )
+
+    const { getCachedCredential } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredential: (id: string) => Promise<{ id: string } | null>
+      }
+
+    await expect(getCachedCredential("1")).resolves.toMatchObject({ id: "1" })
+    await expect(getCachedCredential("missing")).resolves.toBeNull()
+  })
 })

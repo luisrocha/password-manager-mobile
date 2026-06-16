@@ -280,4 +280,50 @@ describe("vaultService", () => {
     await expect(unlockImportedVault("master-password")).resolves.toBe(true)
     expect(unlockVault).toHaveBeenCalledWith("master-password")
   })
+
+  it("decrypts credential secret payloads", async () => {
+    const decryptText = jest.fn(() =>
+      Promise.resolve(
+        JSON.stringify({
+          username: "alice",
+          password: "secret",
+          notes: "private notes"
+        })
+      )
+    )
+
+    jest.doMock("@/config/env", () => ({
+      env: {
+        apiBaseUrl: "https://vault.localhost"
+      }
+    }))
+    jest.doMock("@/runtime/installMobileCryptoRuntime", () => ({
+      ensureMobileCryptoRuntime: jest.fn(() => Promise.resolve(true))
+    }))
+    jest.doMock("@/vault/capabilities", () => ({
+      assertVaultCryptoCapabilities: jest.fn()
+    }))
+    jest.doMock("@/vault/vaultCrypto", () => ({
+      createMobileVaultCrypto: jest.fn(() => ({
+        decryptText,
+        hasStoredVault: jest.fn(),
+        importVaultBackup: jest.fn(),
+        isVaultUnlocked: jest.fn(() => true),
+        lockVault: jest.fn()
+      }))
+    }))
+
+    const { decryptCredentialSecretPayload } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/vault/vaultService") as {
+        decryptCredentialSecretPayload: (encryptedPayload: string) => Promise<unknown>
+      }
+
+    await expect(decryptCredentialSecretPayload("encrypted-payload")).resolves.toEqual({
+      username: "alice",
+      password: "secret",
+      notes: "private notes"
+    })
+    expect(decryptText).toHaveBeenCalledWith("encrypted-payload")
+  })
 })

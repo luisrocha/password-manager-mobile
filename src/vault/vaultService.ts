@@ -29,6 +29,12 @@ interface MobileVaultTransferPayload {
   }
 }
 
+export interface CredentialSecretPayload {
+  username: string
+  password: string
+  notes: string
+}
+
 let vaultCrypto: VaultCrypto | null = null
 
 async function getVaultCrypto() {
@@ -62,6 +68,14 @@ export async function importEncryptedVaultBackup(serializedBackup: string) {
 
 export async function unlockImportedVault(masterPassword: string) {
   return (await getVaultCrypto()).unlockVault(masterPassword)
+}
+
+export async function decryptCredentialSecretPayload(
+  encryptedPayload: string
+): Promise<CredentialSecretPayload> {
+  const decryptedPayload = await (await getVaultCrypto()).decryptText(encryptedPayload)
+
+  return parseCredentialSecretPayload(decryptedPayload)
 }
 
 export async function importVaultBackupWithPairingCode(code: string, deviceName?: string) {
@@ -193,4 +207,15 @@ function isMobileVaultTransferPayload(value: unknown): value is MobileVaultTrans
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
+}
+
+function parseCredentialSecretPayload(serializedPayload: string): CredentialSecretPayload {
+  const payload = JSON.parse(serializedPayload) as unknown
+  if (!isRecord(payload)) throw new Error("credential_payload_invalid")
+
+  return {
+    username: typeof payload.username === "string" ? payload.username : "",
+    password: typeof payload.password === "string" ? payload.password : "",
+    notes: typeof payload.notes === "string" ? payload.notes : ""
+  }
 }
