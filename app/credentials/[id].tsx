@@ -7,6 +7,7 @@ import { getCachedCredential, type SyncedCredential } from "@/sync/mobileSync"
 import {
   decryptCredentialSecretPayload,
   isVaultUnlocked,
+  lockVault,
   type CredentialSecretPayload
 } from "@/vault/vaultService"
 
@@ -107,17 +108,32 @@ export default function CredentialDetailScreen() {
     setTimeout(() => setCopyStatus(null), 1200)
   }
 
+  async function lock() {
+    await lockVault()
+    setSecretPayload(null)
+    setIsPasswordVisible(false)
+    setAreNotesVisible(false)
+    router.replace("/")
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.back()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>Back</Text>
-        </Pressable>
-        <Text style={styles.eyebrow}>Stored item</Text>
+      <View style={styles.headerRow}>
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.backButton}
+          >
+            <Text style={styles.backButtonText}>Back</Text>
+          </Pressable>
+          <Text style={styles.eyebrow}>Stored item</Text>
+        </View>
+        {credential ? (
+          <Pressable accessibilityRole="button" onPress={lock} style={styles.lockButton}>
+            <Text style={styles.lockButtonText}>Lock</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {credential ? (
@@ -256,6 +272,12 @@ const styles = StyleSheet.create({
   header: {
     gap: 12
   },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16
+  },
   backButton: {
     alignSelf: "flex-start",
     paddingVertical: 9,
@@ -265,6 +287,20 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     color: "#101820",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  lockButton: {
+    minWidth: 76,
+    alignItems: "center",
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#6d5f45"
+  },
+  lockButtonText: {
+    color: "#f4efe6",
     fontSize: 14,
     fontWeight: "900"
   },
