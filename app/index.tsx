@@ -1,6 +1,6 @@
 import { Link, router, useFocusEffect, type Href } from "expo-router"
-import { useCallback, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { useCallback, useDeferredValue, useMemo, useState } from "react"
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import { env } from "@/config/env"
 import {
@@ -17,6 +17,7 @@ import {
 
 type UnlockStatus = "idle" | "unlocking" | "unlocked" | "failed"
 type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "reconnect" | "failed"
+type SearchableCredential = SyncedCredential & { searchText: string }
 
 function getUnlockErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not unlock this vault."
@@ -230,12 +231,29 @@ function CredentialSyncSummary({
   onSync,
   syncStatus
 }: CredentialSyncSummaryProps) {
+  const [searchQuery, setSearchQuery] = useState("")
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const searchableCredentials = useMemo(
+    () => buildSearchableCredentials(credentials),
+    [credentials]
+  )
+  const filteredCredentials = useMemo(
+    () => filterCredentials(searchableCredentials, deferredSearchQuery),
+    [searchableCredentials, deferredSearchQuery]
+  )
+  const renderCredential = useCallback(
+    ({ item }: { item: SearchableCredential }) => <CredentialListItem credential={item} />,
+    []
+  )
+
   return (
     <View style={styles.credentialPanel}>
       <View style={styles.syncHeader}>
         <View>
           <Text style={styles.credentialTitle}>Stored items</Text>
-          <Text style={styles.itemCount}>{credentials.length} synced</Text>
+          <Text style={styles.itemCount}>
+            {getItemCountText(credentials.length, filteredCredentials.length, searchQuery)}
+          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -250,30 +268,53 @@ function CredentialSyncSummary({
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
       {credentials.length > 0 ? (
-        <ScrollView
-          contentContainerStyle={styles.credentialList}
+        <TextInput
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          onChangeText={setSearchQuery}
+          placeholder="Search items"
+          placeholderTextColor="#8f8778"
+          style={styles.searchInput}
+          value={searchQuery}
+        />
+      ) : null}
+      {filteredCredentials.length > 0 ? (
+        <FlatList
+          data={filteredCredentials}
+          keyExtractor={(credential) => credential.id}
+          keyboardShouldPersistTaps="handled"
+          renderItem={renderCredential}
           showsVerticalScrollIndicator={false}
-        >
-          {credentials.map((credential) => (
-            <Pressable
-              accessibilityRole="button"
-              key={credential.id}
-              onPress={() => router.push(credentialDetailHref(credential.id))}
-              style={styles.credentialRow}
-            >
-              <Text style={styles.credentialName}>
-                {credential.displayName || credential.domain || "Untitled"}
-              </Text>
-              <Text style={styles.credentialMeta}>
-                {[credential.domain, credential.category].filter(Boolean).join(" · ")}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+          style={styles.credentialList}
+        />
+      ) : credentials.length > 0 ? (
+        <Text style={styles.emptyText}>No items match this search.</Text>
       ) : (
         <Text style={styles.emptyText}>No synced items on this device yet.</Text>
       )}
     </View>
+  )
+}
+
+interface CredentialListItemProps {
+  credential: SyncedCredential
+}
+
+function CredentialListItem({ credential }: CredentialListItemProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push(credentialDetailHref(credential.id))}
+      style={styles.credentialRow}
+    >
+      <Text style={styles.credentialName}>
+        {credential.displayName || credential.domain || "Untitled"}
+      </Text>
+      <Text style={styles.credentialMeta}>
+        {[credential.domain, credential.category].filter(Boolean).join(" · ")}
+      </Text>
+    </Pressable>
   )
 }
 
@@ -287,8 +328,39 @@ function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
   return "Sync after unlocking to store items on this device."
 }
 
+function buildSearchableCredentials(credentials: SyncedCredential[]): SearchableCredential[] {
+  return [...credentials].sort(compareCredentials).map((credential) => ({
+    ...credential,
+    searchText: [credential.displayName, credential.domain, credential.category]
+      .join(" ")
+      .toLowerCase()
+  }))
+}
+
+function filterCredentials(credentials: SearchableCredential[], searchQuery: string) {
+  const normalizedQuery = searchQuery.trim().toLowerCase()
+  if (!normalizedQuery) return credentials
+
+  return credentials.filter((credential) => credential.searchText.includes(normalizedQuery))
+}
+
+function getItemCountText(totalCount: number, visibleCount: number, searchQuery: string) {
+  if (searchQuery.trim()) return `${visibleCount} of ${totalCount} synced`
+
+  return `${totalCount} synced`
+}
+
 function credentialDetailHref(id: string): Href {
   return `/credentials/${encodeURIComponent(id)}` as Href
+}
+
+function compareCredentials(first: SyncedCredential, second: SyncedCredential) {
+  const firstLabel = (first.displayName || first.domain || "").toLowerCase()
+  const secondLabel = (second.displayName || second.domain || "").toLowerCase()
+  const labelComparison = firstLabel.localeCompare(secondLabel)
+  if (labelComparison !== 0) return labelComparison
+
+  return first.id.localeCompare(second.id)
 }
 
 const styles = StyleSheet.create({
@@ -456,12 +528,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18
   },
+  searchInput: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: "#fff8ef",
+    color: "#101820",
+    fontSize: 16,
+    fontWeight: "700"
+  },
   credentialList: {
-    gap: 10,
-    paddingBottom: 4
+    flex: 1,
+    minHeight: 0
   },
   credentialRow: {
     gap: 4,
+    marginBottom: 10,
     padding: 14,
     borderRadius: 18,
     backgroundColor: "#fff8ef"
