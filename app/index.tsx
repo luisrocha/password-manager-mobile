@@ -117,6 +117,30 @@ export default function HomeScreen() {
     }
   }
 
+  if (status === "unlocked") {
+    return (
+      <View style={styles.unlockedScreen}>
+        <View style={styles.unlockedHeader}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>Password Manager Mobile</Text>
+            <Text style={styles.unlockedTitle}>Vault</Text>
+            <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
+          </View>
+          <Pressable onPress={lock} style={styles.lockButton}>
+            <Text style={styles.lockButtonText}>Lock</Text>
+          </Pressable>
+        </View>
+
+        <CredentialSyncSummary
+          credentials={credentials}
+          lastSyncedAt={lastSyncedAt}
+          onSync={syncCredentials}
+          syncStatus={syncStatus}
+        />
+      </View>
+    )
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
@@ -130,58 +154,41 @@ export default function HomeScreen() {
         <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
 
         {hasImportedVault ? (
-          status === "unlocked" ? (
-            <>
-              <Text style={styles.success}>Vault unlocked.</Text>
-              <CredentialSyncSummary
-                credentials={credentials}
-                lastSyncedAt={lastSyncedAt}
-                onSync={syncCredentials}
-                syncStatus={syncStatus}
+          <>
+            <View style={styles.passwordInputRow}>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={status !== "unlocking"}
+                onChangeText={setMasterPassword}
+                onSubmitEditing={unlock}
+                placeholder="Master password"
+                placeholderTextColor="#8f8778"
+                secureTextEntry={!isPasswordVisible}
+                style={styles.input}
+                value={masterPassword}
               />
-              <Pressable onPress={lock} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Lock vault</Text>
-              </Pressable>
-            </>
-          ) : (
-            <>
-              <View style={styles.passwordInputRow}>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={status !== "unlocking"}
-                  onChangeText={setMasterPassword}
-                  onSubmitEditing={unlock}
-                  placeholder="Master password"
-                  placeholderTextColor="#8f8778"
-                  secureTextEntry={!isPasswordVisible}
-                  style={styles.input}
-                  value={masterPassword}
-                />
-                <Pressable
-                  accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
-                  accessibilityRole="button"
-                  disabled={status === "unlocking"}
-                  onPress={() => setIsPasswordVisible((visible) => !visible)}
-                  style={styles.passwordToggle}
-                >
-                  <Text style={styles.passwordToggleText}>
-                    {isPasswordVisible ? "Hide" : "Show"}
-                  </Text>
-                </Pressable>
-              </View>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
               <Pressable
-                disabled={!canUnlock}
-                onPress={unlock}
-                style={[styles.button, !canUnlock ? styles.disabledButton : null]}
+                accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+                accessibilityRole="button"
+                disabled={status === "unlocking"}
+                onPress={() => setIsPasswordVisible((visible) => !visible)}
+                style={styles.passwordToggle}
               >
-                <Text style={styles.buttonText}>
-                  {status === "unlocking" ? "Unlocking..." : "Unlock"}
-                </Text>
+                <Text style={styles.passwordToggleText}>{isPasswordVisible ? "Hide" : "Show"}</Text>
               </Pressable>
-            </>
-          )
+            </View>
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Pressable
+              disabled={!canUnlock}
+              onPress={unlock}
+              style={[styles.button, !canUnlock ? styles.disabledButton : null]}
+            >
+              <Text style={styles.buttonText}>
+                {status === "unlocking" ? "Unlocking..." : "Unlock"}
+              </Text>
+            </Pressable>
+          </>
         ) : (
           <Link href="/import-vault" asChild>
             <Pressable style={styles.button}>
@@ -226,7 +233,10 @@ function CredentialSyncSummary({
   return (
     <View style={styles.credentialPanel}>
       <View style={styles.syncHeader}>
-        <Text style={styles.credentialTitle}>Stored items</Text>
+        <View>
+          <Text style={styles.credentialTitle}>Stored items</Text>
+          <Text style={styles.itemCount}>{credentials.length} synced</Text>
+        </View>
         <Pressable
           accessibilityRole="button"
           disabled={syncStatus === "syncing"}
@@ -240,7 +250,10 @@ function CredentialSyncSummary({
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
       {credentials.length > 0 ? (
-        <View style={styles.credentialList}>
+        <ScrollView
+          contentContainerStyle={styles.credentialList}
+          showsVerticalScrollIndicator={false}
+        >
           {credentials.map((credential) => (
             <View key={credential.id} style={styles.credentialRow}>
               <Text style={styles.credentialName}>
@@ -251,7 +264,7 @@ function CredentialSyncSummary({
               </Text>
             </View>
           ))}
-        </View>
+        </ScrollView>
       ) : (
         <Text style={styles.emptyText}>No synced items on this device yet.</Text>
       )}
@@ -276,6 +289,42 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
     backgroundColor: "#101820"
+  },
+  unlockedScreen: {
+    flex: 1,
+    gap: 16,
+    padding: 20,
+    paddingTop: 56,
+    backgroundColor: "#101820"
+  },
+  unlockedHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 16
+  },
+  headerCopy: {
+    flex: 1,
+    gap: 4
+  },
+  unlockedTitle: {
+    color: "#f4efe6",
+    fontSize: 36,
+    fontWeight: "900",
+    lineHeight: 40
+  },
+  lockButton: {
+    minWidth: 76,
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: "#f4efe6"
+  },
+  lockButtonText: {
+    color: "#101820",
+    fontSize: 15,
+    fontWeight: "900"
   },
   card: {
     width: "100%",
@@ -304,7 +353,7 @@ const styles = StyleSheet.create({
     lineHeight: 25
   },
   meta: {
-    color: "#59636c",
+    color: "#b9aa94",
     fontSize: 13
   },
   passwordInputRow: {
@@ -358,10 +407,12 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   credentialPanel: {
+    flex: 1,
+    minHeight: 0,
     gap: 12,
-    padding: 14,
-    borderRadius: 20,
-    backgroundColor: "#fff8ef"
+    padding: 16,
+    borderRadius: 28,
+    backgroundColor: "#f4efe6"
   },
   syncHeader: {
     flexDirection: "row",
@@ -371,8 +422,14 @@ const styles = StyleSheet.create({
   },
   credentialTitle: {
     color: "#101820",
-    fontSize: 18,
-    fontWeight: "800"
+    fontSize: 22,
+    fontWeight: "900"
+  },
+  itemCount: {
+    marginTop: 2,
+    color: "#59636c",
+    fontSize: 13,
+    fontWeight: "700"
   },
   syncButton: {
     paddingVertical: 8,
@@ -391,13 +448,14 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   credentialList: {
-    gap: 8
+    gap: 10,
+    paddingBottom: 4
   },
   credentialRow: {
     gap: 4,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#eadfcc"
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "#fff8ef"
   },
   credentialName: {
     color: "#101820",
