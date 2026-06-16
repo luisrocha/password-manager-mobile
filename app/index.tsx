@@ -284,7 +284,9 @@ function CredentialSyncSummary({
           data={filteredCredentials}
           keyExtractor={(credential) => credential.id}
           keyboardShouldPersistTaps="handled"
+          onRefresh={onSync}
           renderItem={renderCredential}
+          refreshing={syncStatus === "syncing"}
           showsVerticalScrollIndicator={false}
           style={styles.credentialList}
         />
