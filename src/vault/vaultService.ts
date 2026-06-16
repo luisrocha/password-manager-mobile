@@ -1,5 +1,6 @@
 import { ensureMobileCryptoRuntime } from "@/runtime/installMobileCryptoRuntime"
 import { env } from "@/config/env"
+import { storeMobileDeviceToken } from "@/sync/mobileSync"
 import { assertVaultCryptoCapabilities } from "@/vault/capabilities"
 import type { VaultBackup, VaultCrypto } from "@/vault/types"
 
@@ -64,9 +65,11 @@ export async function unlockImportedVault(masterPassword: string) {
 }
 
 export async function importVaultBackupWithPairingCode(code: string, deviceName?: string) {
-  const serializedBackup = await redeemVaultPairingCode(code, deviceName)
+  const { deviceToken, serializedBackup } = await redeemVaultPairingCode(code, deviceName)
+  const importedBackup = await importEncryptedVaultBackup(serializedBackup)
+  await storeMobileDeviceToken(deviceToken)
 
-  return importEncryptedVaultBackup(serializedBackup)
+  return importedBackup
 }
 
 export async function lockVault() {
@@ -88,6 +91,7 @@ export function normalizeVaultBackupImport(serializedBackup: string) {
 async function redeemVaultPairingCode(code: string, deviceName?: string) {
   const response = await fetchPairingCode(code, deviceName)
   const body = (await parsePairingResponse(response)) as {
+    deviceToken?: unknown
     encryptedVaultBackup?: unknown
     code?: unknown
     error?: unknown
@@ -97,11 +101,14 @@ async function redeemVaultPairingCode(code: string, deviceName?: string) {
     throw new Error(body.code === "pairing_not_found" ? "pairing_not_found" : "pairing_failed")
   }
 
-  if (typeof body.encryptedVaultBackup !== "string") {
+  if (typeof body.encryptedVaultBackup !== "string" || typeof body.deviceToken !== "string") {
     throw new Error("pairing_invalid_response")
   }
 
-  return body.encryptedVaultBackup
+  return {
+    deviceToken: body.deviceToken,
+    serializedBackup: body.encryptedVaultBackup
+  }
 }
 
 async function fetchPairingCode(code: string, deviceName?: string) {

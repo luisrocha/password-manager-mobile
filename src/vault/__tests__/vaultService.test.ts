@@ -2,6 +2,9 @@ describe("vaultService", () => {
   beforeEach(() => {
     jest.resetModules()
     jest.restoreAllMocks()
+    jest.doMock("@/sync/mobileSync", () => ({
+      storeMobileDeviceToken: jest.fn(() => Promise.resolve())
+    }))
   })
 
   const expandedVaultBackup = {
@@ -118,10 +121,15 @@ describe("vaultService", () => {
 
   it("imports encrypted vault backups from pairing codes", async () => {
     const importVaultBackup = jest.fn(() => Promise.resolve(expandedVaultBackup))
+    const storeMobileDeviceToken = jest.fn(() => Promise.resolve())
     const fetchMock = jest.fn(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ encryptedVaultBackup: JSON.stringify(mobileVaultTransfer) })
+        json: () =>
+          Promise.resolve({
+            deviceToken: "raw-device-token",
+            encryptedVaultBackup: JSON.stringify(mobileVaultTransfer)
+          })
       })
     )
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -144,6 +152,9 @@ describe("vaultService", () => {
         lockVault: jest.fn()
       }))
     }))
+    jest.doMock("@/sync/mobileSync", () => ({
+      storeMobileDeviceToken
+    }))
 
     const { importVaultBackupWithPairingCode } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -163,6 +174,32 @@ describe("vaultService", () => {
       }
     )
     expect(importVaultBackup).toHaveBeenCalledWith(JSON.stringify(expandedVaultBackup))
+    expect(storeMobileDeviceToken).toHaveBeenCalledWith("raw-device-token")
+  })
+
+  it("rejects pairing responses without device tokens", async () => {
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ encryptedVaultBackup: JSON.stringify(mobileVaultTransfer) })
+      })
+    ) as unknown as typeof fetch
+
+    jest.doMock("@/config/env", () => ({
+      env: {
+        apiBaseUrl: "https://vault.localhost"
+      }
+    }))
+
+    const { importVaultBackupWithPairingCode } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/vault/vaultService") as {
+        importVaultBackupWithPairingCode: (code: string, deviceName?: string) => Promise<unknown>
+      }
+
+    await expect(importVaultBackupWithPairingCode("ABCD-EFGH", "Luis Pixel")).rejects.toThrow(
+      "pairing_invalid_response"
+    )
   })
 
   it("reports missing pairing codes", async () => {

@@ -1,8 +1,13 @@
 import { Link, useFocusEffect } from "expo-router"
 import { useCallback, useState } from "react"
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native"
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import { env } from "@/config/env"
+import {
+  getCachedCredentials,
+  syncEncryptedCredentials,
+  type SyncedCredential
+} from "@/sync/mobileSync"
 import {
   hasImportedVaultBackup,
   isVaultUnlocked,
@@ -11,6 +16,7 @@ import {
 } from "@/vault/vaultService"
 
 type UnlockStatus = "idle" | "unlocking" | "unlocked" | "failed"
+type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "reconnect" | "failed"
 
 function getUnlockErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not unlock this vault."
@@ -25,6 +31,9 @@ export default function HomeScreen() {
   const [masterPassword, setMasterPassword] = useState("")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [status, setStatus] = useState<UnlockStatus>("idle")
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
+  const [credentials, setCredentials] = useState<SyncedCredential[]>([])
+  const [lastSyncedAt, setLastSyncedAt] = useState("")
   const [error, setError] = useState<string | null>(null)
   const canUnlock = hasImportedVault && masterPassword.length > 0 && status !== "unlocking"
 
@@ -32,12 +41,15 @@ export default function HomeScreen() {
     useCallback(() => {
       let isActive = true
 
-      Promise.all([hasImportedVaultBackup(), isVaultUnlocked()])
-        .then(([isImported, unlocked]) => {
+      Promise.all([hasImportedVaultBackup(), isVaultUnlocked(), getCachedCredentials()])
+        .then(([isImported, unlocked, cache]) => {
           if (!isActive) return
 
           setHasImportedVault(isImported)
           setStatus(unlocked ? "unlocked" : "idle")
+          setCredentials(cache.credentials)
+          setLastSyncedAt(cache.syncedAt)
+          setSyncStatus(cache.syncedAt ? "synced" : "idle")
         })
         .catch(() => {
           if (!isActive) return
@@ -62,6 +74,7 @@ export default function HomeScreen() {
       await unlockImportedVault(masterPassword)
       setMasterPassword("")
       setStatus("unlocked")
+      await syncCredentials()
     } catch (unlockError) {
       console.error(unlockError)
       setError(getUnlockErrorMessage(unlockError))
@@ -74,10 +87,38 @@ export default function HomeScreen() {
     setMasterPassword("")
     setError(null)
     setStatus("idle")
+    setSyncStatus("idle")
+  }
+
+  async function syncCredentials() {
+    setSyncStatus("syncing")
+
+    try {
+      const cache = await syncEncryptedCredentials()
+      setCredentials(cache.credentials)
+      setLastSyncedAt(cache.syncedAt)
+      setSyncStatus("synced")
+    } catch (syncError) {
+      console.error(syncError)
+
+      const cache = await getCachedCredentials()
+      setCredentials(cache.credentials)
+      setLastSyncedAt(cache.syncedAt)
+
+      if (syncError instanceof Error && syncError.message === "mobile_sync_token_missing") {
+        setSyncStatus("reconnect")
+      } else if (syncError instanceof Error && syncError.message === "mobile_sync_unauthorized") {
+        setSyncStatus("reconnect")
+      } else if (syncError instanceof Error && syncError.message === "mobile_sync_network_failed") {
+        setSyncStatus("offline")
+      } else {
+        setSyncStatus("failed")
+      }
+    }
   }
 
   return (
-    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Password Manager Mobile</Text>
         <Text style={styles.title}>Unlock your vault.</Text>
@@ -92,6 +133,12 @@ export default function HomeScreen() {
           status === "unlocked" ? (
             <>
               <Text style={styles.success}>Vault unlocked.</Text>
+              <CredentialSyncSummary
+                credentials={credentials}
+                lastSyncedAt={lastSyncedAt}
+                onSync={syncCredentials}
+                syncStatus={syncStatus}
+              />
               <Pressable onPress={lock} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonText}>Lock vault</Text>
               </Pressable>
@@ -159,13 +206,72 @@ export default function HomeScreen() {
           </Link>
         ) : null}
       </View>
+    </ScrollView>
+  )
+}
+
+interface CredentialSyncSummaryProps {
+  credentials: SyncedCredential[]
+  lastSyncedAt: string
+  onSync: () => Promise<void>
+  syncStatus: SyncStatus
+}
+
+function CredentialSyncSummary({
+  credentials,
+  lastSyncedAt,
+  onSync,
+  syncStatus
+}: CredentialSyncSummaryProps) {
+  return (
+    <View style={styles.credentialPanel}>
+      <View style={styles.syncHeader}>
+        <Text style={styles.credentialTitle}>Stored items</Text>
+        <Pressable
+          accessibilityRole="button"
+          disabled={syncStatus === "syncing"}
+          onPress={onSync}
+          style={styles.syncButton}
+        >
+          <Text style={styles.syncButtonText}>
+            {syncStatus === "syncing" ? "Syncing..." : "Sync"}
+          </Text>
+        </Pressable>
+      </View>
+      <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
+      {credentials.length > 0 ? (
+        <View style={styles.credentialList}>
+          {credentials.map((credential) => (
+            <View key={credential.id} style={styles.credentialRow}>
+              <Text style={styles.credentialName}>
+                {credential.displayName || credential.domain || "Untitled"}
+              </Text>
+              <Text style={styles.credentialMeta}>
+                {[credential.domain, credential.category].filter(Boolean).join(" · ")}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.emptyText}>No synced items on this device yet.</Text>
+      )}
     </View>
   )
 }
 
+function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
+  if (syncStatus === "syncing") return "Syncing encrypted vault data..."
+  if (syncStatus === "offline") return "Server unavailable. Showing local cached items."
+  if (syncStatus === "reconnect") return "Reconnect this device from the web app to sync."
+  if (syncStatus === "failed") return "Could not sync right now. Showing local cached items."
+  if (lastSyncedAt) return `Last synced ${new Date(lastSyncedAt).toLocaleString()}`
+
+  return "Sync after unlocking to store items on this device."
+}
+
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
@@ -250,6 +356,61 @@ const styles = StyleSheet.create({
     color: "#3b4650",
     fontSize: 15,
     fontWeight: "800"
+  },
+  credentialPanel: {
+    gap: 12,
+    padding: 14,
+    borderRadius: 20,
+    backgroundColor: "#fff8ef"
+  },
+  syncHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  credentialTitle: {
+    color: "#101820",
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  syncButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "#101820"
+  },
+  syncButtonText: {
+    color: "#fff8ef",
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  syncStatus: {
+    color: "#59636c",
+    fontSize: 13,
+    lineHeight: 18
+  },
+  credentialList: {
+    gap: 8
+  },
+  credentialRow: {
+    gap: 4,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#eadfcc"
+  },
+  credentialName: {
+    color: "#101820",
+    fontSize: 15,
+    fontWeight: "800"
+  },
+  credentialMeta: {
+    color: "#59636c",
+    fontSize: 13
+  },
+  emptyText: {
+    color: "#59636c",
+    fontSize: 14
   },
   tertiaryButton: {
     alignItems: "center",
