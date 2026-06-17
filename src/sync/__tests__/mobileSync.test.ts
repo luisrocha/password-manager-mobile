@@ -107,10 +107,12 @@ describe("mobileSync", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "https://vault.localhost/api/mobile/credentials/sync",
       {
+        body: undefined,
         headers: {
           Accept: "application/json",
           Authorization: "Bearer raw-token"
-        }
+        },
+        method: "GET"
       }
     )
     await expect(getCachedCredentials()).resolves.toMatchObject({
@@ -454,5 +456,132 @@ describe("mobileSync", () => {
       syncedAt: "2026-06-16T10:04:00Z"
     })
     await expect(getPendingCredentialOperations()).resolves.toHaveLength(2)
+  })
+
+  it("clears confirmed pending operations after push sync", async () => {
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "credential_local",
+            displayName: "Local Only",
+            domain: "local.test",
+            category: "login",
+            encryptedSecretPayload: "local-only-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: null,
+            status: "pending_create",
+            baseUpdatedAt: null,
+            deletedAt: null
+          },
+          {
+            id: "1",
+            displayName: "Delete me",
+            domain: "delete.test",
+            category: "login",
+            encryptedSecretPayload: "delete-payload",
+            updatedAt: "2026-06-16T10:00:00Z",
+            serverId: "1",
+            status: "pending_delete",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            deletedAt: "2026-06-16T10:02:00Z"
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_create",
+            type: "create",
+            localId: "credential_local",
+            serverId: null,
+            baseUpdatedAt: null,
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "Local Only",
+              domain: "local.test",
+              category: "login",
+              encryptedSecretPayload: "local-only-payload"
+            }
+          },
+          {
+            id: "operation_delete",
+            type: "delete",
+            localId: "1",
+            serverId: "1",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            createdAt: "2026-06-16T10:02:00Z"
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            operations: [
+              {
+                id: "operation_create",
+                localId: "credential_local",
+                serverId: "2",
+                status: "confirmed",
+                credential: {
+                  id: "2",
+                  displayName: "Local Only",
+                  domain: "local.test",
+                  category: "login",
+                  encryptedSecretPayload: "local-only-payload",
+                  updatedAt: "2026-06-16T10:03:00Z"
+                }
+              },
+              {
+                id: "operation_delete",
+                localId: "1",
+                serverId: "1",
+                status: "confirmed"
+              }
+            ],
+            credentials: [
+              {
+                id: "2",
+                displayName: "Local Only",
+                domain: "local.test",
+                category: "login",
+                encryptedSecretPayload: "local-only-payload",
+                updatedAt: "2026-06-16T10:03:00Z"
+              }
+            ],
+            syncedAt: "2026-06-16T10:04:00Z"
+          })
+      })
+    ) as unknown as typeof fetch
+
+    const { getCachedCredentials, getPendingCredentialOperations, syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredentials: () => Promise<{
+          credentials: { id: string; status: string }[]
+        }>
+        getPendingCredentialOperations: () => Promise<unknown[]>
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+
+    await syncEncryptedCredentials()
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://vault.localhost/api/mobile/credentials/sync",
+      expect.objectContaining({
+        body: expect.stringContaining("operation_create"),
+        method: "POST"
+      })
+    )
+    await expect(getCachedCredentials()).resolves.toMatchObject({
+      credentials: [{ id: "2", status: "synced" }]
+    })
+    await expect(getPendingCredentialOperations()).resolves.toEqual([])
   })
 })

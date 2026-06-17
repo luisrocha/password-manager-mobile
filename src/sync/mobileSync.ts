@@ -49,6 +49,18 @@ const pendingCredentialOperationSchema = z.object({
 })
 
 const credentialsSyncResponseSchema = z.object({
+  operations: z
+    .array(
+      z.object({
+        code: z.string().optional(),
+        credential: syncedCredentialSchema.optional(),
+        id: z.string().min(1),
+        localId: z.string().min(1),
+        serverId: z.string().nullable().optional(),
+        status: z.enum(["confirmed", "conflict", "failed"])
+      })
+    )
+    .optional(),
   credentials: z.array(syncedCredentialSchema),
   syncedAt: z.string().min(1)
 })
@@ -105,14 +117,24 @@ export async function syncEncryptedCredentials() {
   if (!token) throw new Error("mobile_sync_token_missing")
 
   let response: Response
+  const currentSnapshot = await getCredentialRepositorySnapshot()
+  const requestMethod = currentSnapshot.pendingOperations.length > 0 ? "POST" : "GET"
+  const requestBody =
+    requestMethod === "POST"
+      ? JSON.stringify({ operations: currentSnapshot.pendingOperations })
+      : undefined
+
   try {
     response = await fetchWithTimeout(
       `${env.apiBaseUrl}/api/mobile/credentials/sync`,
       {
+        method: requestMethod,
         headers: {
           Accept: "application/json",
+          ...(requestBody ? { "Content-Type": "application/json" } : {}),
           Authorization: `Bearer ${token}`
-        }
+        },
+        body: requestBody
       },
       SYNC_REQUEST_TIMEOUT_MS
     )
@@ -133,10 +155,13 @@ export async function syncEncryptedCredentials() {
   const parsedResponse = credentialsSyncResponseSchema.safeParse(body)
   if (!parsedResponse.success) throw new Error("mobile_sync_invalid_response")
 
-  const currentSnapshot = await getCredentialRepositorySnapshot()
+  const reconciledSnapshot = reconcileConfirmedOperations(
+    currentSnapshot,
+    parsedResponse.data.operations ?? []
+  )
   const nextSnapshot = mergeServerCredentialsIntoSnapshot(
     parsedResponse.data.credentials,
-    currentSnapshot,
+    reconciledSnapshot,
     parsedResponse.data.syncedAt
   )
 
@@ -337,6 +362,27 @@ function mergeServerCredentialsIntoSnapshot(
     pendingOperations: snapshot.pendingOperations,
     syncedAt,
     version: 1
+  }
+}
+
+function reconcileConfirmedOperations(
+  snapshot: CredentialRepositorySnapshot,
+  operationResults: NonNullable<z.infer<typeof credentialsSyncResponseSchema>["operations"]>
+): CredentialRepositorySnapshot {
+  const confirmedOperations = operationResults.filter(
+    (operation) => operation.status === "confirmed"
+  )
+  if (confirmedOperations.length === 0) return snapshot
+
+  const confirmedOperationIds = new Set(confirmedOperations.map((operation) => operation.id))
+  const confirmedLocalIds = new Set(confirmedOperations.map((operation) => operation.localId))
+
+  return {
+    ...snapshot,
+    credentials: snapshot.credentials.filter((credential) => !confirmedLocalIds.has(credential.id)),
+    pendingOperations: snapshot.pendingOperations.filter(
+      (operation) => !confirmedOperationIds.has(operation.id)
+    )
   }
 }
 

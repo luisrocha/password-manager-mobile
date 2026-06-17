@@ -261,16 +261,6 @@ function CredentialSyncSummary({
           >
             <Text style={styles.addButtonText}>Add item</Text>
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            disabled={syncStatus === "syncing"}
-            onPress={onSync}
-            style={styles.syncButton}
-          >
-            <Text style={styles.syncButtonText}>
-              {syncStatus === "syncing" ? "Syncing..." : "Sync"}
-            </Text>
-          </Pressable>
         </View>
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
@@ -536,17 +526,6 @@ const styles = StyleSheet.create({
     color: "#fff8ef",
     fontSize: 13,
     fontWeight: "900"
-  },
-  syncButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
-    backgroundColor: "#101820"
-  },
-  syncButtonText: {
-    color: "#fff8ef",
-    fontSize: 13,
-    fontWeight: "800"
   },
   syncStatus: {
     color: "#59636c",
