@@ -82,6 +82,10 @@ export async function decryptCredentialSecretPayload(
   return parseCredentialSecretPayload(decryptedPayload)
 }
 
+export async function encryptCredentialSecretPayload(payload: CredentialSecretPayload) {
+  return (await getVaultCrypto()).encryptText(JSON.stringify(payload))
+}
+
 export async function importVaultBackupWithPairingCode(code: string, deviceName?: string) {
   const { deviceToken, serializedBackup } = await redeemVaultPairingCode(code, deviceName)
   const importedBackup = await importEncryptedVaultBackup(serializedBackup)

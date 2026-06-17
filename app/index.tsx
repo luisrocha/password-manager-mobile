@@ -254,16 +254,25 @@ function CredentialSyncSummary({
             {getItemCountText(credentials.length, filteredCredentials.length, searchQuery)}
           </Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          disabled={syncStatus === "syncing"}
-          onPress={onSync}
-          style={styles.syncButton}
-        >
-          <Text style={styles.syncButtonText}>
-            {syncStatus === "syncing" ? "Syncing..." : "Sync"}
-          </Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push("/credentials/new")}
+            style={styles.addButton}
+          >
+            <Text style={styles.addButtonText}>Add item</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={syncStatus === "syncing"}
+            onPress={onSync}
+            style={styles.syncButton}
+          >
+            <Text style={styles.syncButtonText}>
+              {syncStatus === "syncing" ? "Syncing..." : "Sync"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
       {credentials.length > 0 ? (
@@ -346,9 +355,9 @@ function filterCredentials(credentials: SearchableCredential[], searchQuery: str
 }
 
 function getItemCountText(totalCount: number, visibleCount: number, searchQuery: string) {
-  if (searchQuery.trim()) return `${visibleCount} of ${totalCount} synced`
+  if (searchQuery.trim()) return `${visibleCount} of ${totalCount} stored`
 
-  return `${totalCount} synced`
+  return `${totalCount} stored`
 }
 
 function credentialDetailHref(id: string): Href {
@@ -500,7 +509,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12
+    gap: 12,
+    flexWrap: "wrap"
   },
   credentialTitle: {
     color: "#101820",
@@ -512,6 +522,21 @@ const styles = StyleSheet.create({
     color: "#59636c",
     fontSize: 13,
     fontWeight: "700"
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  addButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: "#d95d39"
+  },
+  addButtonText: {
+    color: "#fff8ef",
+    fontSize: 13,
+    fontWeight: "900"
   },
   syncButton: {
     paddingVertical: 8,

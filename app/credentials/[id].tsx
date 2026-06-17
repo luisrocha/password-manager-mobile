@@ -3,7 +3,11 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useState } from "react"
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 
-import { getCachedCredential, type SyncedCredential } from "@/sync/mobileSync"
+import {
+  deleteLocalCredential,
+  getCachedCredential,
+  type SyncedCredential
+} from "@/sync/mobileSync"
 import {
   decryptCredentialSecretPayload,
   isVaultUnlocked,
@@ -22,6 +26,7 @@ export default function CredentialDetailScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [areNotesVisible, setAreNotesVisible] = useState(false)
   const [copyStatus, setCopyStatus] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
@@ -123,6 +128,21 @@ export default function CredentialDetailScreen() {
     router.replace("/")
   }
 
+  async function deleteCredential() {
+    if (!credential || isDeleting) return
+
+    setIsDeleting(true)
+
+    try {
+      await deleteLocalCredential(credential.id)
+      setSecretPayload(null)
+      router.replace("/")
+    } catch {
+      setStatus("failed")
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.headerRow}>
@@ -151,6 +171,23 @@ export default function CredentialDetailScreen() {
           <Text style={styles.meta}>
             {[credential.domain, credential.category].filter(Boolean).join(" · ")}
           </Text>
+          <View style={styles.cardActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push(`/credentials/${encodeURIComponent(credential.id)}/edit`)}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonText}>Edit</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isDeleting}
+              onPress={deleteCredential}
+              style={styles.deleteButton}
+            >
+              <Text style={styles.deleteButtonText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
+            </Pressable>
+          </View>
           {copyStatus ? <Text style={styles.copyStatus}>{copyStatus}</Text> : null}
 
           <Field
@@ -339,6 +376,33 @@ const styles = StyleSheet.create({
     color: "#59636c",
     fontSize: 14,
     lineHeight: 20
+  },
+  cardActions: {
+    flexDirection: "row",
+    gap: 10
+  },
+  secondaryButton: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#101820"
+  },
+  secondaryButtonText: {
+    color: "#fff8ef",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  deleteButton: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#a33b2a"
+  },
+  deleteButtonText: {
+    color: "#a33b2a",
+    fontSize: 14,
+    fontWeight: "900"
   },
   copyStatus: {
     color: "#2f7d47",
