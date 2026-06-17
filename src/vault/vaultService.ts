@@ -62,6 +62,10 @@ export async function isVaultUnlocked() {
   return (await getVaultCrypto()).isVaultUnlocked()
 }
 
+export function isLoadedVaultUnlocked() {
+  return vaultCrypto?.isVaultUnlocked() ?? false
+}
+
 export async function importEncryptedVaultBackup(serializedBackup: string) {
   return (await getVaultCrypto()).importVaultBackup(normalizeVaultBackupImport(serializedBackup))
 }

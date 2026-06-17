@@ -248,6 +248,7 @@ describe("vaultService", () => {
   })
 
   it("unlocks imported vaults locally", async () => {
+    let unlocked = false
     const unlockVault = jest.fn(() => Promise.resolve(true))
 
     jest.doMock("@/config/env", () => ({
@@ -265,19 +266,23 @@ describe("vaultService", () => {
       createMobileVaultCrypto: jest.fn(() => ({
         hasStoredVault: jest.fn(),
         importVaultBackup: jest.fn(),
-        isVaultUnlocked: jest.fn(() => false),
+        isVaultUnlocked: jest.fn(() => unlocked),
         unlockVault,
         lockVault: jest.fn()
       }))
     }))
 
-    const { unlockImportedVault } =
+    const { isLoadedVaultUnlocked, unlockImportedVault } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("@/vault/vaultService") as {
+        isLoadedVaultUnlocked: () => boolean
         unlockImportedVault: (masterPassword: string) => Promise<unknown>
       }
 
+    expect(isLoadedVaultUnlocked()).toBe(false)
+    unlocked = true
     await expect(unlockImportedVault("master-password")).resolves.toBe(true)
+    expect(isLoadedVaultUnlocked()).toBe(true)
     expect(unlockVault).toHaveBeenCalledWith("master-password")
   })
 
