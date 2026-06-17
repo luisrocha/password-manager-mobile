@@ -175,6 +175,18 @@ describe("mobileSync", () => {
     jest.useRealTimers()
   })
 
+  it("ignores background sync failures because local changes stay queued", async () => {
+    mockStorage()
+
+    const { syncEncryptedCredentialsInBackground } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        syncEncryptedCredentialsInBackground: () => Promise<void>
+      }
+
+    await expect(syncEncryptedCredentialsInBackground()).resolves.toBeUndefined()
+  })
+
   it("falls back to an empty cache when local cached credentials are invalid", async () => {
     mockStorage()
     asyncValues.set("passwordManager.syncedCredentials", "{")
@@ -564,7 +576,7 @@ describe("mobileSync", () => {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("@/sync/mobileSync") as {
         getCachedCredentials: () => Promise<{
-          credentials: { id: string; status: string }[]
+          credentials: { id: string; serverId: string | null; status: string }[]
         }>
         getPendingCredentialOperations: () => Promise<unknown[]>
         syncEncryptedCredentials: () => Promise<unknown>
@@ -580,7 +592,7 @@ describe("mobileSync", () => {
       })
     )
     await expect(getCachedCredentials()).resolves.toMatchObject({
-      credentials: [{ id: "2", status: "synced" }]
+      credentials: [{ id: "credential_local", serverId: "2", status: "synced" }]
     })
     await expect(getPendingCredentialOperations()).resolves.toEqual([])
   })

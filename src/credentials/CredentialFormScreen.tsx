@@ -14,6 +14,7 @@ import {
 import {
   createLocalCredential,
   getCachedCredential,
+  syncEncryptedCredentialsInBackground,
   updateLocalCredential
 } from "@/sync/mobileSync"
 import {
@@ -131,9 +132,11 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
       if (mode === "edit") {
         if (!credentialId) throw new Error("credential_missing")
         await updateLocalCredential(credentialId, credentialPayload)
+        void syncEncryptedCredentialsInBackground()
         router.replace(`/credentials/${encodeURIComponent(credentialId)}`)
       } else {
         const createdCredential = await createLocalCredential(credentialPayload)
+        void syncEncryptedCredentialsInBackground()
         router.replace(`/credentials/${encodeURIComponent(createdCredential.id)}`)
       }
     } catch {

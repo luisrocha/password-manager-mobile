@@ -170,6 +170,14 @@ export async function syncEncryptedCredentials() {
   return visibleCredentialCache(nextSnapshot)
 }
 
+export async function syncEncryptedCredentialsInBackground() {
+  try {
+    await syncEncryptedCredentials()
+  } catch {
+    // Local edits are already queued; sync will retry from unlock/pull-to-refresh later.
+  }
+}
+
 export async function getCachedCredentials(): Promise<CachedCredentials> {
   return visibleCredentialCache(await getCredentialRepositorySnapshot())
 }
@@ -352,7 +360,22 @@ function mergeServerCredentialsIntoSnapshot(
   })
 
   snapshot.credentials.forEach((credential) => {
-    if (credential.status === "synced") return
+    if (credential.status === "synced") {
+      if (credential.serverId && credential.serverId !== credential.id) {
+        const serverCredential = serverCredentials.find(
+          (syncedCredential) => syncedCredential.id === credential.serverId
+        )
+        if (serverCredential) {
+          mergedCredentials.delete(serverCredential.id)
+          mergedCredentials.set(credential.id, {
+            ...localCredentialFromSyncedCredential(serverCredential),
+            id: credential.id
+          })
+        }
+      }
+
+      return
+    }
 
     mergedCredentials.set(credential.id, credential)
   })
@@ -375,11 +398,30 @@ function reconcileConfirmedOperations(
   if (confirmedOperations.length === 0) return snapshot
 
   const confirmedOperationIds = new Set(confirmedOperations.map((operation) => operation.id))
-  const confirmedLocalIds = new Set(confirmedOperations.map((operation) => operation.localId))
+  const confirmedCreatesByLocalId = new Map(
+    confirmedOperations
+      .filter((operation) => operation.credential)
+      .map((operation) => [operation.localId, operation])
+  )
+  const confirmedDeleteLocalIds = new Set(
+    confirmedOperations
+      .filter((operation) => !operation.credential)
+      .map((operation) => operation.localId)
+  )
 
   return {
     ...snapshot,
-    credentials: snapshot.credentials.filter((credential) => !confirmedLocalIds.has(credential.id)),
+    credentials: snapshot.credentials
+      .filter((credential) => !confirmedDeleteLocalIds.has(credential.id))
+      .map((credential) => {
+        const confirmedCreate = confirmedCreatesByLocalId.get(credential.id)
+        if (!confirmedCreate?.credential) return credential
+
+        return {
+          ...localCredentialFromSyncedCredential(confirmedCreate.credential),
+          id: credential.id
+        }
+      }),
     pendingOperations: snapshot.pendingOperations.filter(
       (operation) => !confirmedOperationIds.has(operation.id)
     )

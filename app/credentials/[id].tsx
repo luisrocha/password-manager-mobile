@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import {
   deleteLocalCredential,
   getCachedCredential,
+  syncEncryptedCredentialsInBackground,
   type SyncedCredential
 } from "@/sync/mobileSync"
 import {
@@ -135,6 +136,7 @@ export default function CredentialDetailScreen() {
 
     try {
       await deleteLocalCredential(credential.id)
+      void syncEncryptedCredentialsInBackground()
       setSecretPayload(null)
       router.replace("/")
     } catch {
