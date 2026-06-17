@@ -299,10 +299,10 @@ function getStatusTitle(status: DetailStatus) {
 
 function getStatusMessage(status: DetailStatus) {
   if (status === "locked") return "Unlock your vault to view this stored item."
-  if (status === "missing") return "This item is not available in the local cache."
+  if (status === "missing") return "This item is not available in offline mode."
   if (status === "failed") return "Try returning to the vault and opening this item again."
 
-  return "Loading the local cached item."
+  return "Loading the local item."
 }
 
 const styles = StyleSheet.create({

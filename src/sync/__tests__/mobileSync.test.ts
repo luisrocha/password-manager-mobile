@@ -150,6 +150,29 @@ describe("mobileSync", () => {
     await expect(syncEncryptedCredentials()).rejects.toThrow("mobile_sync_unauthorized")
   })
 
+  it("reports stalled sync requests as network failures", async () => {
+    jest.useFakeTimers()
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    globalThis.fetch = jest.fn(() => new Promise(() => undefined)) as unknown as typeof fetch
+
+    const { syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+
+    const syncRequest = expect(syncEncryptedCredentials()).rejects.toThrow(
+      "mobile_sync_network_failed"
+    )
+    await Promise.resolve()
+    await Promise.resolve()
+    await jest.advanceTimersByTimeAsync(8_000)
+
+    await syncRequest
+    jest.useRealTimers()
+  })
+
   it("falls back to an empty cache when local cached credentials are invalid", async () => {
     mockStorage()
     asyncValues.set("passwordManager.syncedCredentials", "{")

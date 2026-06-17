@@ -217,7 +217,13 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 secureTextEntry
                 value={password}
               />
-              <CredentialInput label="Notes" multiline onChangeText={setNotes} value={notes} placeholder="Add notes..." />
+              <CredentialInput
+                label="Notes"
+                multiline
+                onChangeText={setNotes}
+                value={notes}
+                placeholder="Add notes..."
+              />
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <Pressable
                 accessibilityRole="button"

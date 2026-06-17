@@ -65,6 +65,8 @@ const credentialRepositorySchema = z.object({
   version: z.literal(1)
 })
 
+const SYNC_REQUEST_TIMEOUT_MS = 8_000
+
 export type SyncedCredential = z.infer<typeof syncedCredentialSchema>
 export type LocalCredential = z.infer<typeof localCredentialSchema>
 export type PendingCredentialOperation = z.infer<typeof pendingCredentialOperationSchema>
@@ -104,12 +106,16 @@ export async function syncEncryptedCredentials() {
 
   let response: Response
   try {
-    response = await fetch(`${env.apiBaseUrl}/api/mobile/credentials/sync`, {
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${token}`
-      }
-    })
+    response = await fetchWithTimeout(
+      `${env.apiBaseUrl}/api/mobile/credentials/sync`,
+      {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`
+        }
+      },
+      SYNC_REQUEST_TIMEOUT_MS
+    )
   } catch {
     throw new Error("mobile_sync_network_failed")
   }
@@ -381,6 +387,21 @@ function emptyCredentialRepositorySnapshot(): CredentialRepositorySnapshot {
 
 function createLocalId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2)}`
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+
+  try {
+    return await Promise.race([
+      fetch(url, options),
+      new Promise<Response>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("request_timeout")), timeoutMs)
+      })
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

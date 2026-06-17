@@ -99,8 +99,6 @@ export default function HomeScreen() {
       setLastSyncedAt(cache.syncedAt)
       setSyncStatus("synced")
     } catch (syncError) {
-      console.error(syncError)
-
       const cache = await getCachedCredentials()
       setCredentials(cache.credentials)
       setLastSyncedAt(cache.syncedAt)
@@ -112,6 +110,7 @@ export default function HomeScreen() {
       } else if (syncError instanceof Error && syncError.message === "mobile_sync_network_failed") {
         setSyncStatus("offline")
       } else {
+        console.error(syncError)
         setSyncStatus("failed")
       }
     }
@@ -330,9 +329,9 @@ function CredentialListItem({ credential }: CredentialListItemProps) {
 
 function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
   if (syncStatus === "syncing") return "Syncing encrypted vault data..."
-  if (syncStatus === "offline") return "Server unavailable. Showing local cached items."
+  if (syncStatus === "offline") return "Server unavailable. Offline mode."
   if (syncStatus === "reconnect") return "Reconnect this device from the web app to sync."
-  if (syncStatus === "failed") return "Could not sync right now. Showing local cached items."
+  if (syncStatus === "failed") return "Could not sync right now. Offline mode."
   if (lastSyncedAt) return `Last synced ${new Date(lastSyncedAt).toLocaleString()}`
 
   return "Sync after unlocking to store items on this device."
