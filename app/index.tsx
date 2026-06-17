@@ -24,7 +24,7 @@ function getUnlockErrorMessage(error: unknown) {
 
   if (error.message === "vault_missing") return "Import your vault key first."
 
-  return "Master password is incorrect or this vault could not be unlocked."
+  return "Password is incorrect or failed to unlock vault."
 }
 
 export default function HomeScreen() {
@@ -77,7 +77,6 @@ export default function HomeScreen() {
       setStatus("unlocked")
       await syncCredentials()
     } catch (unlockError) {
-      console.error(unlockError)
       setError(getUnlockErrorMessage(unlockError))
       setStatus("failed")
     }
