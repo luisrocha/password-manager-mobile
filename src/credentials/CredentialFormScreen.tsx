@@ -30,19 +30,23 @@ import {
   generatePassword,
   normalizeGeneratedPasswordLength
 } from "./passwordGenerator"
+import {
+  validateCredentialForm,
+  type CREDENTIAL_CATEGORY_VALUES,
+  type CredentialFormFieldErrors
+} from "./credentialFormValidation"
 
 type FormMode = "create" | "edit"
 type FormStatus = "idle" | "loading" | "saving" | "locked" | "missing" | "failed"
+type CredentialCategory = (typeof CREDENTIAL_CATEGORY_VALUES)[number]
 
-const CREDENTIAL_CATEGORIES = [
+const CREDENTIAL_CATEGORIES: { label: string; value: CredentialCategory }[] = [
   { label: "Login", value: "login" },
   { label: "Secure note", value: "note" },
   { label: "API key", value: "api_key" },
   { label: "Server", value: "server" },
   { label: "Database", value: "database" }
-] as const
-
-type CredentialCategory = (typeof CREDENTIAL_CATEGORIES)[number]["value"]
+]
 
 interface CredentialFormScreenProps {
   credentialId?: string
@@ -72,8 +76,8 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
   const [generatedPasswordIncludesSymbols, setGeneratedPasswordIncludesSymbols] = useState(false)
   const [status, setStatus] = useState<FormStatus>(mode === "edit" ? "loading" : "idle")
   const [error, setError] = useState<string | null>(null)
-  const canSave =
-    status !== "saving" && (displayName.trim() || domain.trim()) && password.length > 0
+  const [fieldErrors, setFieldErrors] = useState<CredentialFormFieldErrors>({})
+  const canSave = status !== "saving"
 
   useFocusEffect(
     useCallback(() => {
@@ -130,6 +134,23 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
     if (!canSave) return
 
     setError(null)
+    setFieldErrors({})
+
+    const validatedForm = validateCredentialForm({
+      category,
+      displayName,
+      domain,
+      notes,
+      password,
+      username
+    })
+
+    if (!validatedForm.data) {
+      setFieldErrors(validatedForm.errors ?? {})
+      setError("Check the highlighted fields.")
+      return
+    }
+
     setStatus("saving")
 
     try {
@@ -139,14 +160,14 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
       }
 
       const encryptedSecretPayload = await encryptCredentialSecretPayload({
-        notes,
-        password,
-        username
+        notes: validatedForm.data.notes,
+        password: validatedForm.data.password,
+        username: validatedForm.data.username
       })
       const credentialPayload = {
-        category,
-        displayName: displayName.trim(),
-        domain: normalizeCredentialDomain(domain),
+        category: validatedForm.data.category,
+        displayName: validatedForm.data.displayName,
+        domain: normalizeCredentialDomain(validatedForm.data.domain),
         encryptedSecretPayload
       }
 
@@ -248,6 +269,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 ref={displayNameInputRef}
                 returnKeyType="next"
                 value={displayName}
+                error={fieldErrors.displayName}
               />
               <CredentialInput
                 autoCapitalize="none"
@@ -258,8 +280,10 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 ref={domainInputRef}
                 returnKeyType="next"
                 value={domain}
+                error={fieldErrors.domain}
               />
               <CategoryDropdown
+                error={fieldErrors.category}
                 isOpen={isCategoryOpen}
                 onSelect={(nextCategory) => {
                   setCategory(nextCategory)
@@ -277,6 +301,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 ref={usernameInputRef}
                 returnKeyType="next"
                 value={username}
+                error={fieldErrors.username}
               />
               <CredentialInput
                 autoCapitalize="none"
@@ -311,6 +336,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 returnKeyType="next"
                 secureTextEntry={!isPasswordVisible}
                 value={password}
+                error={fieldErrors.password}
               />
               {isGeneratorOpen ? (
                 <PasswordGeneratorPanel
@@ -334,6 +360,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 ref={notesInputRef}
                 returnKeyType="done"
                 value={notes}
+                error={fieldErrors.notes}
               />
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <Pressable
@@ -436,13 +463,14 @@ function GeneratorOption({
 }
 
 interface CategoryDropdownProps {
+  error?: string
   isOpen: boolean
   onSelect: (category: CredentialCategory) => void
   onToggle: () => void
   value: CredentialCategory
 }
 
-function CategoryDropdown({ isOpen, onSelect, onToggle, value }: CategoryDropdownProps) {
+function CategoryDropdown({ error, isOpen, onSelect, onToggle, value }: CategoryDropdownProps) {
   const selectedCategory = getCategoryOption(value)
 
   return (
@@ -476,12 +504,14 @@ function CategoryDropdown({ isOpen, onSelect, onToggle, value }: CategoryDropdow
           ))}
         </View>
       ) : null}
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   )
 }
 
 interface CredentialInputProps {
   action?: ReactNode
+  error?: string
   autoCapitalize?: "none" | "sentences" | "words" | "characters"
   label: string
   multiline?: boolean
@@ -496,6 +526,7 @@ interface CredentialInputProps {
 
 function CredentialInput({
   action,
+  error,
   autoCapitalize = "sentences",
   label,
   multiline = false,
@@ -528,6 +559,7 @@ function CredentialInput({
         style={[styles.input, multiline ? styles.multilineInput : null]}
         value={value}
       />
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   )
 }
@@ -623,6 +655,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 0.9,
     textTransform: "uppercase"
+  },
+  fieldError: {
+    color: "#a33b2a",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   input: {
     minHeight: 52,
