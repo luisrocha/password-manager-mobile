@@ -17,7 +17,7 @@ import {
   unlockImportedVault
 } from "@/vault/vaultService"
 
-type UnlockStatus = "idle" | "unlocking" | "unlocked" | "failed"
+type UnlockStatus = "checking" | "idle" | "unlocking" | "unlocked" | "failed"
 type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "reconnect" | "failed"
 type SearchableCredential = LocalCredential & { searchText: string }
 
@@ -33,7 +33,7 @@ export default function HomeScreen() {
   const [hasImportedVault, setHasImportedVault] = useState(false)
   const [masterPassword, setMasterPassword] = useState("")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [status, setStatus] = useState<UnlockStatus>("idle")
+  const [status, setStatus] = useState<UnlockStatus>("checking")
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
   const [credentials, setCredentials] = useState<LocalCredential[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState("")
@@ -161,16 +161,24 @@ export default function HomeScreen() {
     )
   }
 
+  if (status === "checking") {
+    return (
+      <View style={styles.loadingScreen}>
+        <View style={styles.loadingTrack}>
+          <View style={styles.loadingBar} />
+        </View>
+      </View>
+    )
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
         <Text style={styles.eyebrow}>Password Manager Mobile</Text>
         <Text style={styles.title}>Unlock your vault.</Text>
-        <Text style={styles.body}>
-          {hasImportedVault
-            ? "Your encrypted vault backup is stored on this device."
-            : "Set up this device from the web app to get started."}
-        </Text>
+        {!hasImportedVault ? (
+          <Text style={styles.body}>This device has not been set up yet.</Text>
+        ) : null}
         <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
 
         {hasImportedVault ? (
@@ -469,6 +477,27 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 56,
     backgroundColor: "#101820"
+  },
+  loadingScreen: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+    backgroundColor: "#101820"
+  },
+  loadingTrack: {
+    width: "44%",
+    maxWidth: 180,
+    height: 5,
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "#2b3742"
+  },
+  loadingBar: {
+    width: "58%",
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#d95d39"
   },
   unlockedHeader: {
     flexDirection: "row",

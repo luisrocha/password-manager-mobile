@@ -65,6 +65,7 @@ export default function RootLayout() {
     <>
       <Stack
         screenOptions={{
+          freezeOnBlur: false,
           headerShown: false,
           contentStyle: {
             backgroundColor: "#101820"
