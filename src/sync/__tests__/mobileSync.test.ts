@@ -596,4 +596,285 @@ describe("mobileSync", () => {
     })
     await expect(getPendingCredentialOperations()).resolves.toEqual([])
   })
+
+  it("notifies repository subscribers after sync reconciliation", async () => {
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "credential_local",
+            displayName: "Local Only",
+            domain: "local.test",
+            category: "login",
+            encryptedSecretPayload: "local-only-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: null,
+            status: "pending_create",
+            baseUpdatedAt: null,
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_create",
+            type: "create",
+            localId: "credential_local",
+            serverId: null,
+            baseUpdatedAt: null,
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "Local Only",
+              domain: "local.test",
+              category: "login",
+              encryptedSecretPayload: "local-only-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            operations: [
+              {
+                id: "operation_create",
+                localId: "credential_local",
+                serverId: "2",
+                status: "confirmed",
+                credential: {
+                  id: "2",
+                  displayName: "Local Only",
+                  domain: "local.test",
+                  category: "login",
+                  encryptedSecretPayload: "local-only-payload",
+                  updatedAt: "2026-06-16T10:03:00Z"
+                }
+              }
+            ],
+            credentials: [
+              {
+                id: "2",
+                displayName: "Local Only",
+                domain: "local.test",
+                category: "login",
+                encryptedSecretPayload: "local-only-payload",
+                updatedAt: "2026-06-16T10:03:00Z"
+              }
+            ],
+            syncedAt: "2026-06-16T10:04:00Z"
+          })
+      })
+    ) as unknown as typeof fetch
+
+    const { getCachedCredential, subscribeCredentialRepository, syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredential: (id: string) => Promise<{ status: string } | null>
+        subscribeCredentialRepository: (listener: () => void) => () => void
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+    const listener = jest.fn()
+    const unsubscribe = subscribeCredentialRepository(listener)
+
+    await syncEncryptedCredentials()
+    unsubscribe()
+
+    expect(listener).toHaveBeenCalled()
+    await expect(getCachedCredential("credential_local")).resolves.toMatchObject({
+      status: "synced"
+    })
+  })
+
+  it("reuses an in-flight sync request so pending creates are not posted twice", async () => {
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "credential_local",
+            displayName: "Local Only",
+            domain: "local.test",
+            category: "login",
+            encryptedSecretPayload: "local-only-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: null,
+            status: "pending_create",
+            baseUpdatedAt: null,
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_create",
+            type: "create",
+            localId: "credential_local",
+            serverId: null,
+            baseUpdatedAt: null,
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "Local Only",
+              domain: "local.test",
+              category: "login",
+              encryptedSecretPayload: "local-only-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            operations: [
+              {
+                id: "operation_create",
+                localId: "credential_local",
+                serverId: "2",
+                status: "confirmed",
+                credential: {
+                  id: "2",
+                  displayName: "Local Only",
+                  domain: "local.test",
+                  category: "login",
+                  encryptedSecretPayload: "local-only-payload",
+                  updatedAt: "2026-06-16T10:03:00Z"
+                }
+              }
+            ],
+            credentials: [
+              {
+                id: "2",
+                displayName: "Local Only",
+                domain: "local.test",
+                category: "login",
+                encryptedSecretPayload: "local-only-payload",
+                updatedAt: "2026-06-16T10:03:00Z"
+              }
+            ],
+            syncedAt: "2026-06-16T10:04:00Z"
+          })
+      })
+    ) as unknown as typeof fetch
+
+    const { getCachedCredentials, syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredentials: () => Promise<{
+          credentials: { id: string; serverId: string | null; status: string }[]
+        }>
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+
+    await Promise.all([syncEncryptedCredentials(), syncEncryptedCredentials()])
+
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    await expect(getCachedCredentials()).resolves.toMatchObject({
+      credentials: [{ id: "credential_local", serverId: "2", status: "synced" }]
+    })
+  })
+
+  it("marks stale pending operations as sync conflicts", async () => {
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "1",
+            displayName: "GitHub Local",
+            domain: "github.com",
+            category: "login",
+            encryptedSecretPayload: "local-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: "1",
+            status: "pending_update",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_update",
+            type: "update",
+            localId: "1",
+            serverId: "1",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "GitHub Local",
+              domain: "github.com",
+              category: "login",
+              encryptedSecretPayload: "local-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            operations: [
+              {
+                id: "operation_update",
+                localId: "1",
+                serverId: "1",
+                status: "conflict",
+                credential: {
+                  id: "1",
+                  displayName: "GitHub Server",
+                  domain: "github.com",
+                  category: "login",
+                  encryptedSecretPayload: "server-payload",
+                  updatedAt: "2026-06-16T10:03:00Z"
+                }
+              }
+            ],
+            credentials: [
+              {
+                id: "1",
+                displayName: "GitHub Server",
+                domain: "github.com",
+                category: "login",
+                encryptedSecretPayload: "server-payload",
+                updatedAt: "2026-06-16T10:03:00Z"
+              }
+            ],
+            syncedAt: "2026-06-16T10:04:00Z"
+          })
+      })
+    ) as unknown as typeof fetch
+
+    const { getCachedCredential, getPendingCredentialOperations, syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredential: (id: string) => Promise<{ displayName: string; status: string } | null>
+        getPendingCredentialOperations: () => Promise<unknown[]>
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+
+    await syncEncryptedCredentials()
+
+    await expect(getCachedCredential("1")).resolves.toMatchObject({
+      displayName: "GitHub Local",
+      status: "sync_conflict"
+    })
+    await expect(getPendingCredentialOperations()).resolves.toHaveLength(1)
+  })
 })

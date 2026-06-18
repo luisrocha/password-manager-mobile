@@ -5,8 +5,9 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { env } from "@/config/env"
 import {
   getCachedCredentials,
+  subscribeCredentialRepository,
   syncEncryptedCredentials,
-  type SyncedCredential
+  type LocalCredential
 } from "@/sync/mobileSync"
 import {
   hasImportedVaultBackup,
@@ -17,7 +18,7 @@ import {
 
 type UnlockStatus = "idle" | "unlocking" | "unlocked" | "failed"
 type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "reconnect" | "failed"
-type SearchableCredential = SyncedCredential & { searchText: string }
+type SearchableCredential = LocalCredential & { searchText: string }
 
 function getUnlockErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not unlock this vault."
@@ -33,7 +34,7 @@ export default function HomeScreen() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [status, setStatus] = useState<UnlockStatus>("idle")
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
-  const [credentials, setCredentials] = useState<SyncedCredential[]>([])
+  const [credentials, setCredentials] = useState<LocalCredential[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState("")
   const [error, setError] = useState<string | null>(null)
   const canUnlock = hasImportedVault && masterPassword.length > 0 && status !== "unlocking"
@@ -42,25 +43,45 @@ export default function HomeScreen() {
     useCallback(() => {
       let isActive = true
 
-      Promise.all([hasImportedVaultBackup(), isVaultUnlocked(), getCachedCredentials()])
-        .then(([isImported, unlocked, cache]) => {
-          if (!isActive) return
+      async function refreshLocalState() {
+        const [isImported, unlocked, cache] = await Promise.all([
+          hasImportedVaultBackup(),
+          isVaultUnlocked(),
+          getCachedCredentials()
+        ])
+        if (!isActive) return
 
-          setHasImportedVault(isImported)
-          setStatus(unlocked ? "unlocked" : "idle")
-          setCredentials(cache.credentials)
-          setLastSyncedAt(cache.syncedAt)
-          setSyncStatus(cache.syncedAt ? "synced" : "idle")
+        setHasImportedVault(isImported)
+        setStatus(unlocked ? "unlocked" : "idle")
+        setCredentials(cache.credentials)
+        setLastSyncedAt(cache.syncedAt)
+        setSyncStatus((currentStatus) => {
+          if (currentStatus === "syncing") return currentStatus
+          if (currentStatus === "offline" || currentStatus === "reconnect") return currentStatus
+
+          return cache.syncedAt ? "synced" : "idle"
         })
-        .catch(() => {
+      }
+
+      const unsubscribe = subscribeCredentialRepository(() => {
+        refreshLocalState().catch(() => {
           if (!isActive) return
 
           setHasImportedVault(false)
           setStatus("idle")
         })
+      })
+
+      refreshLocalState().catch(() => {
+        if (!isActive) return
+
+        setHasImportedVault(false)
+        setStatus("idle")
+      })
 
       return () => {
         isActive = false
+        unsubscribe()
       }
     }, [])
   )
@@ -217,7 +238,7 @@ export default function HomeScreen() {
 }
 
 interface CredentialSyncSummaryProps {
-  credentials: SyncedCredential[]
+  credentials: LocalCredential[]
   lastSyncedAt: string
   onSync: () => Promise<void>
   syncStatus: SyncStatus
@@ -297,7 +318,7 @@ function CredentialSyncSummary({
 }
 
 interface CredentialListItemProps {
-  credential: SyncedCredential
+  credential: LocalCredential
 }
 
 function CredentialListItem({ credential }: CredentialListItemProps) {
@@ -313,7 +334,19 @@ function CredentialListItem({ credential }: CredentialListItemProps) {
       <Text style={styles.credentialMeta}>
         {[credential.domain, credential.category].filter(Boolean).join(" · ")}
       </Text>
+      <CredentialStatusBadge status={credential.status} />
     </Pressable>
+  )
+}
+
+function CredentialStatusBadge({ status }: { status: LocalCredential["status"] }) {
+  const label = getCredentialStatusLabel(status)
+  if (!label) return null
+
+  return (
+    <Text style={[styles.statusBadge, status === "sync_conflict" ? styles.conflictBadge : null]}>
+      {label}
+    </Text>
   )
 }
 
@@ -327,7 +360,7 @@ function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
   return "Sync after unlocking to store items on this device."
 }
 
-function buildSearchableCredentials(credentials: SyncedCredential[]): SearchableCredential[] {
+function buildSearchableCredentials(credentials: LocalCredential[]): SearchableCredential[] {
   return [...credentials].sort(compareCredentials).map((credential) => ({
     ...credential,
     searchText: [credential.displayName, credential.domain, credential.category]
@@ -353,13 +386,19 @@ function credentialDetailHref(id: string): Href {
   return `/credentials/${encodeURIComponent(id)}` as Href
 }
 
-function compareCredentials(first: SyncedCredential, second: SyncedCredential) {
+function compareCredentials(first: LocalCredential, second: LocalCredential) {
   const firstLabel = (first.displayName || first.domain || "").toLowerCase()
   const secondLabel = (second.displayName || second.domain || "").toLowerCase()
   const labelComparison = firstLabel.localeCompare(secondLabel)
   if (labelComparison !== 0) return labelComparison
 
   return first.id.localeCompare(second.id)
+}
+
+function getCredentialStatusLabel(status: LocalCredential["status"]) {
+  if (status === "sync_conflict") return "Sync conflict"
+
+  return null
 }
 
 const styles = StyleSheet.create({
@@ -560,6 +599,23 @@ const styles = StyleSheet.create({
   credentialMeta: {
     color: "#59636c",
     fontSize: 13
+  },
+  statusBadge: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "#efe1c8",
+    color: "#6d5f45",
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase"
+  },
+  conflictBadge: {
+    backgroundColor: "#f4d0c7",
+    color: "#a33b2a"
   },
   emptyText: {
     color: "#59636c",

@@ -21,7 +21,8 @@ const localCredentialStatusSchema = z.enum([
   "synced",
   "pending_create",
   "pending_update",
-  "pending_delete"
+  "pending_delete",
+  "sync_conflict"
 ])
 
 const localCredentialSchema = syncedCredentialSchema.extend({
@@ -96,6 +97,16 @@ export interface CredentialRepositorySnapshot extends CachedCredentials {
 }
 
 const secureStorage = createSecureValueStorage()
+const credentialRepositoryListeners = new Set<() => void>()
+let syncRequestPromise: Promise<CachedCredentials> | null = null
+
+export function subscribeCredentialRepository(listener: () => void) {
+  credentialRepositoryListeners.add(listener)
+
+  return () => {
+    credentialRepositoryListeners.delete(listener)
+  }
+}
 
 export async function storeMobileDeviceToken(token: string) {
   const normalizedToken = token.trim()
@@ -113,6 +124,14 @@ export async function clearMobileDeviceToken() {
 }
 
 export async function syncEncryptedCredentials() {
+  syncRequestPromise ??= performCredentialSync().finally(() => {
+    syncRequestPromise = null
+  })
+
+  return syncRequestPromise
+}
+
+async function performCredentialSync() {
   const token = await getMobileDeviceToken()
   if (!token) throw new Error("mobile_sync_token_missing")
 
@@ -346,6 +365,11 @@ async function parseJsonResponse(response: Response) {
 
 async function storeCredentialRepositorySnapshot(snapshot: CredentialRepositorySnapshot) {
   await AsyncStorage.setItem(SYNCED_CREDENTIALS_STORAGE_KEY, JSON.stringify(snapshot))
+  notifyCredentialRepositoryListeners()
+}
+
+function notifyCredentialRepositoryListeners() {
+  credentialRepositoryListeners.forEach((listener) => listener())
 }
 
 function mergeServerCredentialsIntoSnapshot(
@@ -395,9 +419,11 @@ function reconcileConfirmedOperations(
   const confirmedOperations = operationResults.filter(
     (operation) => operation.status === "confirmed"
   )
-  if (confirmedOperations.length === 0) return snapshot
+  const conflictOperations = operationResults.filter((operation) => operation.status === "conflict")
+  if (confirmedOperations.length === 0 && conflictOperations.length === 0) return snapshot
 
   const confirmedOperationIds = new Set(confirmedOperations.map((operation) => operation.id))
+  const conflictedLocalIds = new Set(conflictOperations.map((operation) => operation.localId))
   const confirmedCreatesByLocalId = new Map(
     confirmedOperations
       .filter((operation) => operation.credential)
@@ -415,12 +441,21 @@ function reconcileConfirmedOperations(
       .filter((credential) => !confirmedDeleteLocalIds.has(credential.id))
       .map((credential) => {
         const confirmedCreate = confirmedCreatesByLocalId.get(credential.id)
-        if (!confirmedCreate?.credential) return credential
-
-        return {
-          ...localCredentialFromSyncedCredential(confirmedCreate.credential),
-          id: credential.id
+        if (confirmedCreate?.credential) {
+          return {
+            ...localCredentialFromSyncedCredential(confirmedCreate.credential),
+            id: credential.id
+          }
         }
+
+        if (conflictedLocalIds.has(credential.id) && credential.status !== "pending_create") {
+          return {
+            ...credential,
+            status: "sync_conflict"
+          }
+        }
+
+        return credential
       }),
     pendingOperations: snapshot.pendingOperations.filter(
       (operation) => !confirmedOperationIds.has(operation.id)

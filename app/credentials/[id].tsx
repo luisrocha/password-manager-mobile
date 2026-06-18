@@ -6,8 +6,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import {
   deleteLocalCredential,
   getCachedCredential,
+  subscribeCredentialRepository,
   syncEncryptedCredentialsInBackground,
-  type SyncedCredential
+  type LocalCredential
 } from "@/sync/mobileSync"
 import {
   decryptCredentialSecretPayload,
@@ -21,7 +22,7 @@ const CLIPBOARD_CLEAR_DELAY_MS = 30_000
 
 export default function CredentialDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
-  const [credential, setCredential] = useState<SyncedCredential | null>(null)
+  const [credential, setCredential] = useState<LocalCredential | null>(null)
   const [secretPayload, setSecretPayload] = useState<CredentialSecretPayload | null>(null)
   const [status, setStatus] = useState<DetailStatus>("loading")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
@@ -33,8 +34,8 @@ export default function CredentialDetailScreen() {
     useCallback(() => {
       let isActive = true
 
-      async function loadCredential() {
-        setStatus("loading")
+      async function loadCredential({ showLoading = false } = {}) {
+        if (showLoading) setStatus("loading")
 
         if (!id) {
           setStatus("missing")
@@ -51,11 +52,14 @@ export default function CredentialDetailScreen() {
         if (!isActive) return
 
         if (!cachedCredential) {
+          setCredential(null)
+          setSecretPayload(null)
           setStatus("missing")
           return
         }
 
         setCredential(cachedCredential)
+        setSecretPayload(null)
         setStatus("ready")
         decryptCredentialSecretPayload(cachedCredential.encryptedSecretPayload)
           .then((payload) => {
@@ -66,12 +70,19 @@ export default function CredentialDetailScreen() {
           })
       }
 
-      loadCredential().catch(() => {
+      const unsubscribe = subscribeCredentialRepository(() => {
+        loadCredential().catch(() => {
+          if (isActive) setStatus("failed")
+        })
+      })
+
+      loadCredential({ showLoading: true }).catch(() => {
         if (isActive) setStatus("failed")
       })
 
       return () => {
         isActive = false
+        unsubscribe()
         setSecretPayload(null)
         setIsPasswordVisible(false)
         setAreNotesVisible(false)
@@ -173,6 +184,7 @@ export default function CredentialDetailScreen() {
           <Text style={styles.meta}>
             {[credential.domain, credential.category].filter(Boolean).join(" · ")}
           </Text>
+          <CredentialSyncNotice status={credential.status} />
           <View style={styles.cardActions}>
             <Pressable
               accessibilityRole="button"
@@ -232,6 +244,24 @@ export default function CredentialDetailScreen() {
       )}
     </ScrollView>
   )
+}
+
+function CredentialSyncNotice({ status }: { status: LocalCredential["status"] }) {
+  const message = getCredentialSyncMessage(status)
+  if (!message) return null
+
+  return (
+    <Text style={[styles.syncNotice, status === "sync_conflict" ? styles.conflictNotice : null]}>
+      {message}
+    </Text>
+  )
+}
+
+function getCredentialSyncMessage(status: LocalCredential["status"]) {
+  if (status === "sync_conflict")
+    return "This item changed on the server before your edit synced. Review it before retrying."
+
+  return null
 }
 
 interface FieldProps {
@@ -378,6 +408,20 @@ const styles = StyleSheet.create({
     color: "#59636c",
     fontSize: 14,
     lineHeight: 20
+  },
+  syncNotice: {
+    padding: 12,
+    borderRadius: 16,
+    overflow: "hidden",
+    backgroundColor: "#efe1c8",
+    color: "#6d5f45",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  conflictNotice: {
+    backgroundColor: "#f4d0c7",
+    color: "#a33b2a"
   },
   cardActions: {
     flexDirection: "row",
