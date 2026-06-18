@@ -3,6 +3,7 @@ import { useCallback, useDeferredValue, useMemo, useState } from "react"
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import { env } from "@/config/env"
+import { credentialMatchesDomain, normalizeCredentialDomain } from "@/credentials/domainMatching"
 import {
   getCachedCredentials,
   subscribeCredentialRepository,
@@ -399,7 +400,12 @@ function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
 function buildSearchableCredentials(credentials: LocalCredential[]): SearchableCredential[] {
   return [...credentials].sort(compareCredentials).map((credential) => ({
     ...credential,
-    searchText: [credential.displayName, credential.domain, credential.category]
+    searchText: [
+      credential.displayName,
+      credential.domain,
+      normalizeCredentialDomain(credential.domain),
+      credential.category
+    ]
       .join(" ")
       .toLowerCase()
   }))
@@ -409,7 +415,11 @@ function filterCredentials(credentials: SearchableCredential[], searchQuery: str
   const normalizedQuery = searchQuery.trim().toLowerCase()
   if (!normalizedQuery) return credentials
 
-  return credentials.filter((credential) => credential.searchText.includes(normalizedQuery))
+  return credentials.filter(
+    (credential) =>
+      credential.searchText.includes(normalizedQuery) ||
+      credentialMatchesDomain(credential, normalizedQuery)
+  )
 }
 
 function getItemCountText(totalCount: number, visibleCount: number, searchQuery: string) {

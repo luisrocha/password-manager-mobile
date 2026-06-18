@@ -1,11 +1,13 @@
 import { router, useFocusEffect } from "expo-router"
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState, type ReactNode } from "react"
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View
@@ -22,6 +24,12 @@ import {
   encryptCredentialSecretPayload,
   isVaultUnlocked
 } from "@/vault/vaultService"
+import { normalizeCredentialDomain } from "./domainMatching"
+import {
+  DEFAULT_GENERATED_PASSWORD_LENGTH,
+  generatePassword,
+  normalizeGeneratedPasswordLength
+} from "./passwordGenerator"
 
 type FormMode = "create" | "edit"
 type FormStatus = "idle" | "loading" | "saving" | "locked" | "missing" | "failed"
@@ -42,6 +50,12 @@ interface CredentialFormScreenProps {
 }
 
 export function CredentialFormScreen({ credentialId, mode }: CredentialFormScreenProps) {
+  const displayNameInputRef = useRef<TextInput>(null)
+  const domainInputRef = useRef<TextInput>(null)
+  const generatedPasswordLengthInputRef = useRef<TextInput>(null)
+  const notesInputRef = useRef<TextInput>(null)
+  const passwordInputRef = useRef<TextInput>(null)
+  const usernameInputRef = useRef<TextInput>(null)
   const [displayName, setDisplayName] = useState("")
   const [domain, setDomain] = useState("")
   const [category, setCategory] = useState<CredentialCategory>("login")
@@ -49,6 +63,13 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [notes, setNotes] = useState("")
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [isGeneratorOpen, setIsGeneratorOpen] = useState(false)
+  const [generatedPasswordLength, setGeneratedPasswordLength] = useState(
+    String(DEFAULT_GENERATED_PASSWORD_LENGTH)
+  )
+  const [generatedPasswordIncludesNumbers, setGeneratedPasswordIncludesNumbers] = useState(true)
+  const [generatedPasswordIncludesSymbols, setGeneratedPasswordIncludesSymbols] = useState(false)
   const [status, setStatus] = useState<FormStatus>(mode === "edit" ? "loading" : "idle")
   const [error, setError] = useState<string | null>(null)
   const canSave =
@@ -125,7 +146,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
       const credentialPayload = {
         category,
         displayName: displayName.trim(),
-        domain: domain.trim(),
+        domain: normalizeCredentialDomain(domain),
         encryptedSecretPayload
       }
 
@@ -143,6 +164,42 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
       setError("Could not save this item.")
       setStatus("idle")
     }
+  }
+
+  function generateNewPassword() {
+    try {
+      const length = normalizeGeneratedPasswordLength(generatedPasswordLength)
+
+      setGeneratedPasswordLength(String(length))
+      setPassword(
+        generatePassword({
+          includeNumbers: generatedPasswordIncludesNumbers,
+          includeSymbols: generatedPasswordIncludesSymbols,
+          length
+        })
+      )
+      setError(null)
+      setIsGeneratorOpen(false)
+    } catch {
+      setError("Could not generate a password on this device.")
+    }
+  }
+
+  function focusNextAfterPassword() {
+    if (isGeneratorOpen) {
+      generatedPasswordLengthInputRef.current?.focus()
+      return
+    }
+
+    notesInputRef.current?.focus()
+  }
+
+  function togglePasswordGenerator() {
+    setIsGeneratorOpen((open) => {
+      if (!open) Keyboard.dismiss()
+
+      return !open
+    })
   }
 
   return (
@@ -186,14 +243,20 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 autoCapitalize="words"
                 label="Title"
                 onChangeText={setDisplayName}
+                onSubmitEditing={() => domainInputRef.current?.focus()}
                 placeholder="Enter title"
+                ref={displayNameInputRef}
+                returnKeyType="next"
                 value={displayName}
               />
               <CredentialInput
                 autoCapitalize="none"
                 label="Domain"
                 onChangeText={setDomain}
+                onSubmitEditing={() => usernameInputRef.current?.focus()}
                 placeholder="example.com"
+                ref={domainInputRef}
+                returnKeyType="next"
                 value={domain}
               />
               <CategoryDropdown
@@ -209,23 +272,68 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
                 autoCapitalize="none"
                 label="Username"
                 onChangeText={setUsername}
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
                 placeholder="Enter username"
+                ref={usernameInputRef}
+                returnKeyType="next"
                 value={username}
               />
               <CredentialInput
                 autoCapitalize="none"
+                action={
+                  <View style={styles.passwordFieldActions}>
+                    <Pressable
+                      accessibilityLabel={isPasswordVisible ? "Hide password" : "Show password"}
+                      accessibilityRole="button"
+                      onPress={() => setIsPasswordVisible((visible) => !visible)}
+                      style={styles.fieldActionButton}
+                    >
+                      <Text style={styles.fieldActionButtonText}>
+                        {isPasswordVisible ? "Hide" : "Show"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel="Generate password"
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: isGeneratorOpen }}
+                      onPress={togglePasswordGenerator}
+                      style={styles.fieldActionButton}
+                    >
+                      <Text style={styles.fieldActionButtonText}>Generate</Text>
+                    </Pressable>
+                  </View>
+                }
                 label="Password"
                 onChangeText={setPassword}
+                onSubmitEditing={focusNextAfterPassword}
                 placeholder="Enter password"
-                secureTextEntry
+                ref={passwordInputRef}
+                returnKeyType="next"
+                secureTextEntry={!isPasswordVisible}
                 value={password}
               />
+              {isGeneratorOpen ? (
+                <PasswordGeneratorPanel
+                  includeNumbers={generatedPasswordIncludesNumbers}
+                  includeSymbols={generatedPasswordIncludesSymbols}
+                  lengthInputRef={generatedPasswordLengthInputRef}
+                  length={generatedPasswordLength}
+                  onGenerate={generateNewPassword}
+                  onLengthSubmit={() => notesInputRef.current?.focus()}
+                  onLengthChange={setGeneratedPasswordLength}
+                  onNumbersChange={setGeneratedPasswordIncludesNumbers}
+                  onSymbolsChange={setGeneratedPasswordIncludesSymbols}
+                />
+              ) : null}
               <CredentialInput
                 label="Notes"
                 multiline
                 onChangeText={setNotes}
-                value={notes}
+                onSubmitEditing={saveCredential}
                 placeholder="Add notes..."
+                ref={notesInputRef}
+                returnKeyType="done"
+                value={notes}
               />
               {error ? <Text style={styles.error}>{error}</Text> : null}
               <Pressable
@@ -243,6 +351,87 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  )
+}
+
+interface PasswordGeneratorPanelProps {
+  includeNumbers: boolean
+  includeSymbols: boolean
+  length: string
+  lengthInputRef: React.RefObject<TextInput | null>
+  onGenerate: () => void
+  onLengthSubmit: () => void
+  onLengthChange: (length: string) => void
+  onNumbersChange: (includeNumbers: boolean) => void
+  onSymbolsChange: (includeSymbols: boolean) => void
+}
+
+function PasswordGeneratorPanel({
+  includeNumbers,
+  includeSymbols,
+  length,
+  lengthInputRef,
+  onGenerate,
+  onLengthSubmit,
+  onLengthChange,
+  onNumbersChange,
+  onSymbolsChange
+}: PasswordGeneratorPanelProps) {
+  return (
+    <View style={styles.generatorPanel}>
+      <View style={styles.generatorHeader}>
+        <Text style={styles.generatorLabel}>Characters</Text>
+        <TextInput
+          accessibilityLabel="Generated password length"
+          blurOnSubmit={false}
+          keyboardType="number-pad"
+          onBlur={() => onLengthChange(String(normalizeGeneratedPasswordLength(length)))}
+          onChangeText={onLengthChange}
+          onSubmitEditing={onLengthSubmit}
+          placeholder="20"
+          placeholderTextColor="#8f8778"
+          ref={lengthInputRef}
+          returnKeyType="next"
+          style={styles.lengthInput}
+          value={length}
+        />
+      </View>
+      <GeneratorOption
+        label="Include numbers"
+        onValueChange={onNumbersChange}
+        value={includeNumbers}
+      />
+      <GeneratorOption
+        label="Include symbols"
+        onValueChange={onSymbolsChange}
+        value={includeSymbols}
+      />
+      <Pressable accessibilityRole="button" onPress={onGenerate} style={styles.generatorButton}>
+        <Text style={styles.generatorButtonText}>Use generated password</Text>
+      </Pressable>
+    </View>
+  )
+}
+
+function GeneratorOption({
+  label,
+  onValueChange,
+  value
+}: {
+  label: string
+  onValueChange: (value: boolean) => void
+  value: boolean
+}) {
+  return (
+    <View style={styles.generatorOption}>
+      <Text style={styles.generatorOptionText}>{label}</Text>
+      <Switch
+        onValueChange={onValueChange}
+        thumbColor={value ? "#f4efe6" : "#8f8778"}
+        trackColor={{ false: "#dfd0b8", true: "#101820" }}
+        value={value}
+      />
+    </View>
   )
 }
 
@@ -292,34 +481,49 @@ function CategoryDropdown({ isOpen, onSelect, onToggle, value }: CategoryDropdow
 }
 
 interface CredentialInputProps {
+  action?: ReactNode
   autoCapitalize?: "none" | "sentences" | "words" | "characters"
   label: string
   multiline?: boolean
   onChangeText: (value: string) => void
+  onSubmitEditing?: () => void | Promise<void>
   placeholder?: string
+  ref?: React.RefObject<TextInput | null>
+  returnKeyType?: "done" | "go" | "next" | "search" | "send"
   secureTextEntry?: boolean
   value: string
 }
 
 function CredentialInput({
+  action,
   autoCapitalize = "sentences",
   label,
   multiline = false,
   onChangeText,
+  onSubmitEditing,
   placeholder,
+  ref,
+  returnKeyType,
   secureTextEntry = false,
   value
 }: CredentialInputProps) {
   return (
     <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.fieldHeader}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {action}
+      </View>
       <TextInput
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
+        blurOnSubmit={multiline ? true : false}
         multiline={multiline}
         onChangeText={onChangeText}
+        onSubmitEditing={onSubmitEditing}
         placeholder={placeholder}
         placeholderTextColor="#8f8778"
+        ref={ref}
+        returnKeyType={returnKeyType}
         secureTextEntry={secureTextEntry}
         style={[styles.input, multiline ? styles.multilineInput : null]}
         value={value}
@@ -407,6 +611,12 @@ const styles = StyleSheet.create({
   field: {
     gap: 8
   },
+  fieldHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
   fieldLabel: {
     color: "#6d5f45",
     fontSize: 12,
@@ -422,6 +632,77 @@ const styles = StyleSheet.create({
     color: "#101820",
     fontSize: 16,
     fontWeight: "700"
+  },
+  fieldActionButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    backgroundColor: "#101820"
+  },
+  fieldActionButtonText: {
+    color: "#fff8ef",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  passwordFieldActions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  generatorPanel: {
+    gap: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#dfd0b8",
+    backgroundColor: "#fff8ef"
+  },
+  generatorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  generatorLabel: {
+    color: "#6d5f45",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  lengthInput: {
+    minWidth: 74,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#dfd0b8",
+    color: "#101820",
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  generatorOption: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  generatorOptionText: {
+    color: "#3b4650",
+    fontSize: 14,
+    fontWeight: "800"
+  },
+  generatorButton: {
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#c7b99f"
+  },
+  generatorButtonText: {
+    color: "#101820",
+    fontSize: 14,
+    fontWeight: "900"
   },
   dropdownButton: {
     minHeight: 52,
