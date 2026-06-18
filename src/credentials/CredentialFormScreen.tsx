@@ -133,7 +133,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
         if (!credentialId) throw new Error("credential_missing")
         await updateLocalCredential(credentialId, credentialPayload)
         void syncEncryptedCredentialsInBackground()
-        router.replace(`/credentials/${encodeURIComponent(credentialId)}`)
+        router.back()
       } else {
         const createdCredential = await createLocalCredential(credentialPayload)
         void syncEncryptedCredentialsInBackground()
