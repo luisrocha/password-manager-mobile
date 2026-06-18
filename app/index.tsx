@@ -143,7 +143,6 @@ export default function HomeScreen() {
         <View style={styles.unlockedHeader}>
           <View style={styles.headerCopy}>
             <Text style={styles.eyebrow}>Password Manager Mobile</Text>
-            <Text style={styles.unlockedTitle}>Vault</Text>
             <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
           </View>
           <Pressable onPress={lock} style={styles.lockButton}>

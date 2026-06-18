@@ -1,7 +1,16 @@
 import * as Clipboard from "expo-clipboard"
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
-import { useCallback, useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useCallback, useEffect, useState } from "react"
+import {
+  Animated,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View
+} from "react-native"
 
 import {
   deleteLocalCredential,
@@ -189,6 +198,8 @@ export default function CredentialDetailScreen() {
     }
   }
 
+  const isConflict = credential?.status === "sync_conflict"
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.headerRow}>
@@ -211,76 +222,74 @@ export default function CredentialDetailScreen() {
 
       {credential ? (
         <View style={styles.card}>
-          <Text style={styles.title}>
-            {credential.displayName || credential.domain || "Untitled"}
-          </Text>
-          <Text style={styles.meta}>
-            {[credential.domain, credential.category].filter(Boolean).join(" · ")}
-          </Text>
+          {!isConflict ? (
+            <>
+              <Text style={styles.title}>
+                {credential.displayName || credential.domain || "Untitled"}
+              </Text>
+              <Text style={styles.meta}>
+                {[credential.domain, credential.category].filter(Boolean).join(" · ")}
+              </Text>
+            </>
+          ) : null}
           <CredentialSyncNotice status={credential.status} />
-          {credential.status === "sync_conflict" ? (
-            <View style={styles.conflictActions}>
+          {isConflict ? (
+            <ConflictResolutionCards
+              credential={credential}
+              isResolving={isResolvingConflict}
+              localSecretPayload={secretPayload}
+              onKeepLocal={keepLocalChanges}
+              onUseServer={useServerVersion}
+            />
+          ) : (
+            <View style={styles.cardActions}>
               <Pressable
                 accessibilityRole="button"
-                disabled={isResolvingConflict}
-                onPress={keepLocalChanges}
+                onPress={() =>
+                  router.push(`/credentials/${encodeURIComponent(credential.id)}/edit`)
+                }
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonText}>
-                  {isResolvingConflict ? "Resolving..." : "Keep my changes"}
-                </Text>
+                <Text style={styles.secondaryButtonText}>Edit</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                disabled={isResolvingConflict}
-                onPress={useServerVersion}
-                style={styles.revealButton}
+                disabled={isDeleting}
+                onPress={deleteCredential}
+                style={styles.deleteButton}
               >
-                <Text style={styles.revealButtonText}>Use server version</Text>
+                <Text style={styles.deleteButtonText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
               </Pressable>
             </View>
-          ) : null}
-          <View style={styles.cardActions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push(`/credentials/${encodeURIComponent(credential.id)}/edit`)}
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonText}>Edit</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={isDeleting}
-              onPress={deleteCredential}
-              style={styles.deleteButton}
-            >
-              <Text style={styles.deleteButtonText}>{isDeleting ? "Deleting..." : "Delete"}</Text>
-            </Pressable>
-          </View>
+          )}
           {copyStatus ? <Text style={styles.copyStatus}>{copyStatus}</Text> : null}
 
-          <Field
-            label="Username"
-            onCopy={() => copySecret("username")}
-            value={secretPayload?.username ?? "Decrypting..."}
-          />
+          {!isConflict ? (
+            <>
+              <Field
+                label="Username"
+                onCopy={() => copySecret("username")}
+                value={secretPayload?.username ?? "Decrypting..."}
+              />
 
-          <SecretField
-            isVisible={isPasswordVisible}
-            label="Password"
-            onCopy={() => copySecret("password")}
-            onToggle={togglePassword}
-            value={secretPayload?.password ?? ""}
-          />
+              <SecretField
+                isVisible={isPasswordVisible}
+                label="Password"
+                onCopy={() => copySecret("password")}
+                onToggle={togglePassword}
+                value={secretPayload?.password ?? ""}
+              />
 
-          <SecretField
-            isVisible={areNotesVisible}
-            label="Notes"
-            multiline
-            onCopy={() => copySecret("notes")}
-            onToggle={toggleNotes}
-            value={secretPayload?.notes ?? ""}
-          />
+              <SecretField
+                isVisible={areNotesVisible}
+                label="Notes"
+                multiline
+                onCopy={() => copySecret("notes")}
+                onToggle={toggleNotes}
+                value={secretPayload?.notes ?? ""}
+              />
+            </>
+          ) : null}
         </View>
       ) : (
         <View style={styles.card}>
@@ -301,6 +310,267 @@ export default function CredentialDetailScreen() {
   )
 }
 
+interface ConflictResolutionCardsProps {
+  credential: LocalCredential
+  isResolving: boolean
+  localSecretPayload: CredentialSecretPayload | null
+  onKeepLocal: () => Promise<void>
+  onUseServer: () => Promise<void>
+}
+
+function ConflictResolutionCards({
+  credential,
+  isResolving,
+  localSecretPayload,
+  onKeepLocal,
+  onUseServer
+}: ConflictResolutionCardsProps) {
+  const { width } = useWindowDimensions()
+  const [serverSecretState, setServerSecretState] = useState<{
+    encryptedPayload: string | null
+    payload: CredentialSecretPayload | null
+    status: "ready" | "failed"
+  }>({ encryptedPayload: null, payload: null, status: "failed" })
+  const serverCredential = credential.conflictCredential
+  const serverEncryptedPayload = serverCredential?.encryptedSecretPayload ?? null
+  const isCurrentServerSecret = serverSecretState.encryptedPayload === serverEncryptedPayload
+  const serverSecretPayload = isCurrentServerSecret ? serverSecretState.payload : null
+  const serverSecretStatus = isCurrentServerSecret ? serverSecretState.status : "loading"
+  const [activeVersionIndex, setActiveVersionIndex] = useState(0)
+  const [switchDirection, setSwitchDirection] = useState(1)
+  const [switchProgress] = useState(() => new Animated.Value(1))
+  const cardWidth = Math.max(width - 92, 252)
+  const switchCards = (direction: number) => {
+    setSwitchDirection(direction)
+    switchProgress.setValue(0)
+    setActiveVersionIndex((currentIndex) => (currentIndex === 0 ? 1 : 0))
+    Animated.spring(switchProgress, {
+      damping: 15,
+      mass: 0.7,
+      stiffness: 180,
+      toValue: 1,
+      useNativeDriver: true
+    }).start()
+  }
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      Math.abs(gestureState.dx) > 24 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+    onPanResponderRelease: (_, gestureState) => {
+      if (Math.abs(gestureState.dx) < 42) return
+
+      switchCards(gestureState.dx < 0 ? 1 : -1)
+    }
+  })
+  const activeCardAnimation = {
+    opacity: switchProgress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.88, 1]
+    }),
+    transform: [
+      {
+        translateX: switchProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [switchDirection * Math.min(cardWidth * 0.58, 180), 0]
+        })
+      }
+    ]
+  }
+
+  useEffect(() => {
+    let isActive = true
+
+    if (!serverEncryptedPayload) return undefined
+
+    decryptCredentialSecretPayload(serverEncryptedPayload)
+      .then((payload) => {
+        if (!isActive) return
+        setServerSecretState({ encryptedPayload: serverEncryptedPayload, payload, status: "ready" })
+      })
+      .catch(() => {
+        if (!isActive) return
+        setServerSecretState({
+          encryptedPayload: serverEncryptedPayload,
+          payload: null,
+          status: "failed"
+        })
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [serverEncryptedPayload])
+
+  if (!serverCredential) return null
+
+  const versionCards: ConflictVersionCardData[] = [
+    {
+      actionLabel: isResolving ? "Resolving..." : "Keep local changes",
+      label: "On this phone",
+      onPress: onKeepLocal,
+      secretPayload: localSecretPayload,
+      secretStatus: localSecretPayload ? ("ready" as const) : ("loading" as const),
+      version: {
+        category: credential.category,
+        displayName: credential.displayName,
+        domain: credential.domain,
+        updatedAt: credential.updatedAt
+      }
+    },
+    {
+      actionLabel: isResolving ? "Resolving..." : "Use server changes",
+      label: "On server",
+      onPress: onUseServer,
+      secretPayload: serverSecretPayload,
+      secretStatus: serverSecretStatus,
+      version: serverCredential
+    }
+  ]
+  const activeVersion = versionCards[activeVersionIndex]
+  const inactiveVersion = versionCards[activeVersionIndex === 0 ? 1 : 0]
+
+  return (
+    <View style={styles.conflictCards}>
+      <Text style={styles.conflictHint}>Swipe left or right to compare versions.</Text>
+      <View style={styles.conflictStack} {...panResponder.panHandlers}>
+        <View pointerEvents="none" style={styles.conflictCardBehind}>
+          <ConflictVersionCard
+            actionLabel={inactiveVersion.actionLabel}
+            disabled={isResolving}
+            label={inactiveVersion.label}
+            onPress={inactiveVersion.onPress}
+            secretPayload={inactiveVersion.secretPayload}
+            secretStatus={inactiveVersion.secretStatus}
+            style={{ width: cardWidth }}
+            version={inactiveVersion.version}
+          />
+        </View>
+        <Animated.View style={activeCardAnimation}>
+          <ConflictVersionCard
+            actionLabel={activeVersion.actionLabel}
+            disabled={isResolving}
+            label={activeVersion.label}
+            onPress={activeVersion.onPress}
+            secretPayload={activeVersion.secretPayload}
+            secretStatus={activeVersion.secretStatus}
+            style={{ width: cardWidth }}
+            version={activeVersion.version}
+          />
+        </Animated.View>
+      </View>
+    </View>
+  )
+}
+
+interface ConflictVersionCardProps {
+  actionLabel: string
+  disabled: boolean
+  label: string
+  onPress: () => Promise<void>
+  secretPayload: CredentialSecretPayload | null
+  secretStatus: "loading" | "ready" | "failed"
+  style?: object
+  version: Pick<LocalCredential, "category" | "displayName" | "domain" | "updatedAt">
+}
+
+type ConflictVersionCardData = Omit<ConflictVersionCardProps, "disabled" | "style">
+
+function ConflictVersionCard({
+  actionLabel,
+  disabled,
+  label,
+  onPress,
+  secretPayload,
+  secretStatus,
+  style,
+  version
+}: ConflictVersionCardProps) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [areNotesVisible, setAreNotesVisible] = useState(false)
+
+  return (
+    <View style={[styles.conflictCard, style]}>
+      <Text style={styles.conflictCardLabel}>{label}</Text>
+      <Text style={styles.conflictCardTitle}>
+        {version.displayName || version.domain || "Untitled"}
+      </Text>
+      <Text style={styles.conflictCardMeta}>
+        {[version.domain, version.category].filter(Boolean).join(" · ")}
+      </Text>
+      <Text style={styles.conflictCardTime}>Last updated {formatUpdatedAt(version.updatedAt)}</Text>
+      <View style={styles.conflictSecrets}>
+        <VersionSecretValue
+          label="Username"
+          value={secretPayload?.username}
+          status={secretStatus}
+        />
+        <VersionSecretValue
+          isVisible={isPasswordVisible}
+          label="Password"
+          onToggle={() => setIsPasswordVisible((visible) => !visible)}
+          value={secretPayload?.password}
+          status={secretStatus}
+        />
+        <VersionSecretValue
+          isVisible={areNotesVisible}
+          label="Notes"
+          onToggle={() => setAreNotesVisible((visible) => !visible)}
+          value={secretPayload?.notes}
+          status={secretStatus}
+        />
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={onPress}
+        style={[styles.conflictCardButton, disabled ? styles.disabledButton : null]}
+      >
+        <Text style={styles.conflictCardButtonText}>{actionLabel}</Text>
+      </Pressable>
+    </View>
+  )
+}
+
+function VersionSecretValue({
+  isVisible = true,
+  label,
+  onToggle,
+  status,
+  value
+}: {
+  isVisible?: boolean
+  label: string
+  onToggle?: () => void
+  status: "loading" | "ready" | "failed"
+  value?: string
+}) {
+  return (
+    <View style={styles.versionSecret}>
+      <View style={styles.versionSecretHeader}>
+        <Text style={styles.versionSecretLabel}>{label}</Text>
+        {onToggle ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onToggle}
+            style={styles.versionRevealButton}
+          >
+            <Text style={styles.versionRevealButtonText}>{isVisible ? "Hide" : "Reveal"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      <Text style={[styles.versionSecretValue, label === "Notes" ? styles.multilineValue : null]}>
+        {isVisible ? secretDisplayValue(status, value) : "Hidden"}
+      </Text>
+    </View>
+  )
+}
+
+function secretDisplayValue(status: "loading" | "ready" | "failed", value?: string) {
+  if (status === "loading") return "Decrypting..."
+  if (status === "failed") return "Could not decrypt"
+
+  return value || "-"
+}
+
 function CredentialSyncNotice({ status }: { status: LocalCredential["status"] }) {
   const message = getCredentialSyncMessage(status)
   if (!message) return null
@@ -317,6 +587,16 @@ function getCredentialSyncMessage(status: LocalCredential["status"]) {
     return "This item changed on the server before your edit synced. Review it before retrying."
 
   return null
+}
+
+function formatUpdatedAt(updatedAt: string) {
+  const date = new Date(updatedAt)
+  if (Number.isNaN(date.getTime())) return "unknown"
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(date)
 }
 
 interface FieldProps {
@@ -478,10 +758,117 @@ const styles = StyleSheet.create({
     backgroundColor: "#f4d0c7",
     color: "#a33b2a"
   },
-  conflictActions: {
+  conflictCards: {
+    gap: 12
+  },
+  conflictHint: {
+    color: "#6d5f45",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  conflictStack: {
+    alignItems: "center",
+    paddingRight: 12,
+    paddingBottom: 18
+  },
+  conflictCardBehind: {
+    position: "absolute",
+    top: 14,
+    right: 0,
+    opacity: 0.72,
+    transform: [{ rotate: "2deg" }]
+  },
+  conflictCard: {
+    gap: 12,
+    padding: 16,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#e1b3a7",
+    backgroundColor: "#fff8ef",
+    shadowColor: "#101820",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 5
+  },
+  conflictCardLabel: {
+    color: "#a33b2a",
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.9,
+    textTransform: "uppercase"
+  },
+  conflictCardTitle: {
+    color: "#101820",
+    fontSize: 20,
+    fontWeight: "900",
+    lineHeight: 24
+  },
+  conflictCardMeta: {
+    color: "#59636c",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  conflictCardTime: {
+    color: "#6d5f45",
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  conflictCardButton: {
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#b6402d"
+  },
+  conflictCardButtonText: {
+    color: "#fff8ef",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  conflictSecrets: {
+    gap: 9
+  },
+  versionSecret: {
+    gap: 5,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: "#f4efe6"
+  },
+  versionSecretHeader: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  versionSecretLabel: {
+    color: "#6d5f45",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  versionSecretValue: {
+    color: "#101820",
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21
+  },
+  versionRevealButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "#101820"
+  },
+  versionRevealButtonText: {
+    color: "#fff8ef",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  disabledButton: {
+    opacity: 0.55
   },
   cardActions: {
     flexDirection: "row",
