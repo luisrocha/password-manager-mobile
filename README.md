@@ -4,7 +4,7 @@ Android-first Expo mobile app for the self-hosted password manager.
 
 ## Current Scope
 
-- Import an existing encrypted web vault backup by QR code instead of generating a new vault key.
+- Set up or re-pair this device from the web app instead of generating a new vault key.
 - Work offline from a local encrypted credential cache.
 - Sync with the Rails server on unlock when the network is available.
 - Exclude browser-extension connection and CSV import features.

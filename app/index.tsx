@@ -23,7 +23,7 @@ type SearchableCredential = LocalCredential & { searchText: string }
 function getUnlockErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not unlock this vault."
 
-  if (error.message === "vault_missing") return "Import your vault key first."
+  if (error.message === "vault_missing") return "Set up this device first."
 
   return "Password is incorrect or failed to unlock vault."
 }
@@ -168,7 +168,7 @@ export default function HomeScreen() {
         <Text style={styles.body}>
           {hasImportedVault
             ? "Your encrypted vault backup is stored on this device."
-            : "Import your encrypted vault backup to get started."}
+            : "Set up this device from the web app to get started."}
         </Text>
         <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
 
@@ -209,25 +209,17 @@ export default function HomeScreen() {
             </Pressable>
           </>
         ) : (
-          <Link href="/import-vault" asChild>
+          <Link href={{ pathname: "/import-vault", params: { mode: "setup" } }} asChild>
             <Pressable style={styles.button}>
-              <Text style={styles.buttonText}>Import vault</Text>
+              <Text style={styles.buttonText}>Set up device</Text>
             </Pressable>
           </Link>
         )}
 
         {hasImportedVault ? (
-          <Link href="/import-vault" asChild>
+          <Link href={{ pathname: "/import-vault", params: { mode: "repair" } }} asChild>
             <Pressable style={styles.tertiaryButton}>
-              <Text style={styles.tertiaryButtonText}>Replace vault key</Text>
-            </Pressable>
-          </Link>
-        ) : null}
-
-        {__DEV__ ? (
-          <Link href="/crypto-diagnostics" asChild>
-            <Pressable style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonText}>Crypto diagnostics</Text>
+              <Text style={styles.tertiaryButtonText}>Re-pair device</Text>
             </Pressable>
           </Link>
         ) : null}

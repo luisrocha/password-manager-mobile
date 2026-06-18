@@ -1,6 +1,6 @@
-import { Link, router } from "expo-router"
+import { router, useLocalSearchParams } from "expo-router"
 import { useState } from "react"
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native"
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
 import { env } from "@/config/env"
 import { importVaultBackupWithPairingCode } from "@/vault/vaultService"
@@ -8,7 +8,7 @@ import { importVaultBackupWithPairingCode } from "@/vault/vaultService"
 type ImportStatus = "idle" | "importing" | "imported" | "failed"
 
 function getImportErrorMessage(error: unknown) {
-  if (!(error instanceof Error)) return "Could not import this vault backup."
+  if (!(error instanceof Error)) return "Could not set up this device."
 
   if (error.message === "vault_unsupported") {
     return "This vault backup version is not supported."
@@ -23,17 +23,19 @@ function getImportErrorMessage(error: unknown) {
   }
 
   if (error.message === "pairing_failed" || error.message === "pairing_invalid_response") {
-    return "Could not import with that pairing code."
+    return "Could not pair with that pairing code."
   }
 
   if (error.message === "pairing_network_failed") {
     return `Could not reach ${env.apiBaseUrl}. Use the computer's local network IP address, not localhost.`
   }
 
-  return "Could not import this vault backup."
+  return "Could not set up this device."
 }
 
 export default function ImportVaultScreen() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>()
+  const isRepairing = mode === "repair"
   const [pairingCode, setPairingCode] = useState("")
   const [deviceName, setDeviceName] = useState(() => inferDefaultDeviceName())
   const [error, setError] = useState<string | null>(null)
@@ -69,51 +71,61 @@ export default function ImportVaultScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Import vault key</Text>
-      <Text style={styles.body}>Enter the pairing code from the web app.</Text>
-      <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
-      <TextInput
-        autoCapitalize="words"
-        autoCorrect={false}
-        editable={status !== "importing"}
-        maxLength={120}
-        onChangeText={setDeviceName}
-        placeholder="Device name"
-        placeholderTextColor="#8f8778"
-        style={styles.input}
-        value={deviceName}
-      />
-      <TextInput
-        autoCapitalize="characters"
-        autoCorrect={false}
-        editable={status !== "importing"}
-        maxLength={9}
-        onChangeText={(value) => setPairingCode(formatPairingCode(value))}
-        placeholder="ABCD-EFGH"
-        placeholderTextColor="#8f8778"
-        style={styles.codeInput}
-        value={pairingCode}
-      />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {status === "imported" ? <Text style={styles.success}>Vault key imported.</Text> : null}
-      <Pressable
-        accessibilityRole="button"
-        disabled={status !== "imported" && !canImportPairingCode}
-        onPress={importPairingCode}
-        style={[
-          styles.button,
-          status !== "imported" && !canImportPairingCode ? styles.disabledButton : null
-        ]}
-      >
-        <Text style={styles.buttonText}>
-          {status === "imported" ? "Done" : status === "importing" ? "Importing..." : "Import"}
-        </Text>
-      </Pressable>
-      {status !== "imported" ? (
-        <Link href="/" style={styles.link}>
-          Back
-        </Link>
-      ) : null}
+      <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Text style={styles.backButtonText}>Back</Text>
+        </Pressable>
+        <Text style={styles.eyebrow}>Set up device</Text>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.title}>{isRepairing ? "Re-pair device" : "Set up device"}</Text>
+        <Text style={styles.body}>Enter the pairing code from the web app.</Text>
+        <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
+        <TextInput
+          autoCapitalize="words"
+          autoCorrect={false}
+          editable={status !== "importing"}
+          maxLength={120}
+          onChangeText={setDeviceName}
+          placeholder="Device name"
+          placeholderTextColor="#8f8778"
+          style={styles.input}
+          value={deviceName}
+        />
+        <TextInput
+          autoCapitalize="characters"
+          autoCorrect={false}
+          editable={status !== "importing"}
+          maxLength={9}
+          onChangeText={(value) => setPairingCode(formatPairingCode(value))}
+          placeholder="ABCD-EFGH"
+          placeholderTextColor="#8f8778"
+          style={styles.codeInput}
+          value={pairingCode}
+        />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {status === "imported" ? (
+          <Text style={styles.success}>{isRepairing ? "Device re-paired." : "Device set up."}</Text>
+        ) : null}
+        <Pressable
+          accessibilityRole="button"
+          disabled={status !== "imported" && !canImportPairingCode}
+          onPress={importPairingCode}
+          style={[
+            styles.button,
+            status !== "imported" && !canImportPairingCode ? styles.disabledButton : null
+          ]}
+        >
+          <Text style={styles.buttonText}>
+            {status === "imported" ? "Done" : status === "importing" ? "Pairing..." : "Pair device"}
+          </Text>
+        </Pressable>
+      </View>
     </ScrollView>
   )
 }
@@ -155,36 +167,70 @@ function inferDefaultDeviceName() {
 const styles = StyleSheet.create({
   screen: {
     flexGrow: 1,
-    gap: 16,
-    padding: 24,
+    gap: 18,
+    padding: 20,
+    paddingTop: 56,
     backgroundColor: "#101820"
   },
+  header: {
+    gap: 12
+  },
+  backButton: {
+    alignSelf: "flex-start",
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#f4efe6"
+  },
+  backButtonText: {
+    color: "#101820",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  eyebrow: {
+    color: "#b9aa94",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    textTransform: "uppercase"
+  },
+  card: {
+    gap: 16,
+    padding: 20,
+    borderRadius: 28,
+    backgroundColor: "#f4efe6"
+  },
   title: {
-    color: "#f4efe6",
+    color: "#101820",
     fontSize: 30,
-    fontWeight: "800"
+    fontWeight: "900",
+    lineHeight: 34
   },
   body: {
-    color: "#d8ccba",
-    fontSize: 17,
-    lineHeight: 25
+    color: "#3b4650",
+    fontSize: 16,
+    lineHeight: 23
   },
   meta: {
-    color: "#b9aa94",
+    color: "#59636c",
     fontSize: 13,
     lineHeight: 19
   },
   input: {
     padding: 16,
     borderRadius: 18,
-    backgroundColor: "#f4efe6",
+    borderWidth: 1,
+    borderColor: "#c7b99f",
+    backgroundColor: "#fff8ef",
     color: "#101820",
     fontSize: 16
   },
   codeInput: {
     padding: 16,
     borderRadius: 18,
-    backgroundColor: "#f4efe6",
+    borderWidth: 1,
+    borderColor: "#c7b99f",
+    backgroundColor: "#fff8ef",
     color: "#101820",
     fontSize: 18,
     fontWeight: "800",
@@ -206,18 +252,14 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   success: {
-    color: "#a8d8a0",
+    color: "#2f7d47",
     fontSize: 16,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   error: {
-    color: "#ffb4a8",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  link: {
-    color: "#ffb36b",
-    fontSize: 16,
-    fontWeight: "700"
+    color: "#b83f2f",
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21
   }
 })
