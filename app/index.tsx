@@ -285,16 +285,28 @@ function CredentialSyncSummary({
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
       {credentials.length > 0 ? (
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="while-editing"
-          onChangeText={setSearchQuery}
-          placeholder="Search items"
-          placeholderTextColor="#8f8778"
-          style={styles.searchInput}
-          value={searchQuery}
-        />
+        <View style={styles.searchRow}>
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            clearButtonMode="while-editing"
+            onChangeText={setSearchQuery}
+            placeholder="Search items"
+            placeholderTextColor="#8f8778"
+            style={styles.searchInput}
+            value={searchQuery}
+          />
+          {searchQuery ? (
+            <Pressable
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
+              onPress={() => setSearchQuery("")}
+              style={styles.searchClearButton}
+            >
+              <Text style={styles.searchClearButtonText}>×</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
       {filteredCredentials.length > 0 ? (
         <FlatList
@@ -570,7 +582,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18
   },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
   searchInput: {
+    flex: 1,
     minHeight: 48,
     paddingHorizontal: 14,
     borderRadius: 16,
@@ -578,6 +596,19 @@ const styles = StyleSheet.create({
     color: "#101820",
     fontSize: 16,
     fontWeight: "700"
+  },
+  searchClearButton: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: "#d9d1c2"
+  },
+  searchClearButtonText: {
+    color: "#59636c",
+    fontSize: 20,
+    fontWeight: "900"
   },
   credentialList: {
     flex: 1,
