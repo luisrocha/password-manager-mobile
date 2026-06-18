@@ -276,6 +276,7 @@ function CredentialSyncSummary({
         </View>
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
+      <SyncRecoveryActions onSync={onSync} syncStatus={syncStatus} />
       {credentials.length > 0 ? (
         <View style={styles.searchRow}>
           <TextInput
@@ -316,6 +317,38 @@ function CredentialSyncSummary({
       ) : (
         <Text style={styles.emptyText}>No synced items on this device yet.</Text>
       )}
+    </View>
+  )
+}
+
+function SyncRecoveryActions({
+  onSync,
+  syncStatus
+}: {
+  onSync: () => Promise<void>
+  syncStatus: SyncStatus
+}) {
+  if (syncStatus === "reconnect") {
+    return (
+      <View style={styles.syncActionRow}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push({ pathname: "/import-vault", params: { mode: "repair" } })}
+          style={styles.syncActionButton}
+        >
+          <Text style={styles.syncActionButtonText}>Re-pair device</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  if (syncStatus !== "offline" && syncStatus !== "failed") return null
+
+  return (
+    <View style={styles.syncActionRow}>
+      <Pressable accessibilityRole="button" onPress={onSync} style={styles.syncActionButton}>
+        <Text style={styles.syncActionButtonText}>Retry sync</Text>
+      </Pressable>
     </View>
   )
 }
@@ -400,6 +433,9 @@ function compareCredentials(first: LocalCredential, second: LocalCredential) {
 
 function getCredentialStatusLabel(status: LocalCredential["status"]) {
   if (status === "sync_conflict") return "Sync conflict"
+  if (status === "pending_create") return "Pending sync"
+  if (status === "pending_update") return "Pending sync"
+  if (status === "pending_delete") return "Pending delete"
 
   return null
 }
@@ -573,6 +609,22 @@ const styles = StyleSheet.create({
     color: "#59636c",
     fontSize: 13,
     lineHeight: 18
+  },
+  syncActionRow: {
+    flexDirection: "row"
+  },
+  syncActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#c7b99f",
+    backgroundColor: "#fff8ef"
+  },
+  syncActionButtonText: {
+    color: "#8d4a30",
+    fontSize: 13,
+    fontWeight: "900"
   },
   searchRow: {
     flexDirection: "row",

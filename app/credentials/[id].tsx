@@ -576,13 +576,22 @@ function CredentialSyncNotice({ status }: { status: LocalCredential["status"] })
   if (!message) return null
 
   return (
-    <Text style={[styles.syncNotice, status === "sync_conflict" ? styles.conflictNotice : null]}>
+    <Text
+      style={[
+        styles.syncNotice,
+        status === "sync_conflict" ? styles.conflictNotice : null,
+        status === "pending_delete" ? styles.deletePendingNotice : null
+      ]}
+    >
       {message}
     </Text>
   )
 }
 
 function getCredentialSyncMessage(status: LocalCredential["status"]) {
+  if (status === "pending_create") return "Pending sync"
+  if (status === "pending_update") return "Pending sync"
+  if (status === "pending_delete") return "Pending delete"
   if (status === "sync_conflict")
     return "This item changed on the server before your edit synced. Review it before retrying."
 
@@ -755,6 +764,10 @@ const styles = StyleSheet.create({
     lineHeight: 18
   },
   conflictNotice: {
+    backgroundColor: "#f4d0c7",
+    color: "#a33b2a"
+  },
+  deletePendingNotice: {
     backgroundColor: "#f4d0c7",
     color: "#a33b2a"
   },
