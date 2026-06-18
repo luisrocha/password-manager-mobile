@@ -27,6 +27,7 @@ const localCredentialStatusSchema = z.enum([
 
 const localCredentialSchema = syncedCredentialSchema.extend({
   baseUpdatedAt: z.string().nullable(),
+  conflictCredential: syncedCredentialSchema.nullable().optional().default(null),
   deletedAt: z.string().nullable(),
   serverId: z.string().nullable(),
   status: localCredentialStatusSchema
@@ -238,6 +239,7 @@ export async function createLocalCredential(credential: PendingCredentialPayload
   const nextCredential: LocalCredential = {
     ...credential,
     baseUpdatedAt: null,
+    conflictCredential: null,
     deletedAt: null,
     id,
     serverId: null,
@@ -277,6 +279,7 @@ export async function updateLocalCredential(id: string, credential: PendingCrede
     ...existingCredential,
     ...credential,
     baseUpdatedAt: isPendingCreate ? null : baseUpdatedAt,
+    conflictCredential: null,
     deletedAt: null,
     status: isPendingCreate ? "pending_create" : "pending_update",
     updatedAt
@@ -324,6 +327,7 @@ export async function deleteLocalCredential(id: string) {
   const nextCredential: LocalCredential = {
     ...existingCredential,
     baseUpdatedAt,
+    conflictCredential: null,
     deletedAt,
     status: "pending_delete",
     updatedAt: deletedAt
@@ -353,6 +357,68 @@ export async function deleteLocalCredential(id: string) {
 
 export async function clearCachedCredentials() {
   await AsyncStorage.removeItem(SYNCED_CREDENTIALS_STORAGE_KEY)
+}
+
+export async function keepLocalCredentialChanges(id: string) {
+  const snapshot = await getCredentialRepositorySnapshot()
+  const credential = snapshot.credentials.find(
+    (storedCredential) => storedCredential.id === id && storedCredential.status === "sync_conflict"
+  )
+  if (!credential?.conflictCredential) throw new Error("local_credential_conflict_missing")
+
+  const pendingOperation = snapshot.pendingOperations.find((operation) => operation.localId === id)
+  if (!pendingOperation) throw new Error("local_credential_pending_operation_missing")
+
+  const updatedAt = new Date().toISOString()
+  const nextStatus = pendingOperation.type === "delete" ? "pending_delete" : "pending_update"
+  const nextCredential: LocalCredential = {
+    ...credential,
+    baseUpdatedAt: credential.conflictCredential.updatedAt,
+    conflictCredential: null,
+    status: nextStatus,
+    updatedAt
+  }
+  const nextOperation: PendingCredentialOperation = {
+    ...pendingOperation,
+    baseUpdatedAt: credential.conflictCredential.updatedAt,
+    createdAt: updatedAt,
+    serverId: credential.conflictCredential.id
+  }
+
+  await storeCredentialRepositorySnapshot({
+    ...snapshot,
+    credentials: snapshot.credentials.map((storedCredential) =>
+      storedCredential.id === id ? nextCredential : storedCredential
+    ),
+    pendingOperations: snapshot.pendingOperations.map((operation) =>
+      operation.localId === id ? nextOperation : operation
+    )
+  })
+
+  return nextCredential
+}
+
+export async function applyServerCredentialVersion(id: string) {
+  const snapshot = await getCredentialRepositorySnapshot()
+  const credential = snapshot.credentials.find(
+    (storedCredential) => storedCredential.id === id && storedCredential.status === "sync_conflict"
+  )
+  if (!credential?.conflictCredential) throw new Error("local_credential_conflict_missing")
+
+  const serverCredential = {
+    ...localCredentialFromSyncedCredential(credential.conflictCredential),
+    id: credential.id
+  }
+
+  await storeCredentialRepositorySnapshot({
+    ...snapshot,
+    credentials: snapshot.credentials.map((storedCredential) =>
+      storedCredential.id === id ? serverCredential : storedCredential
+    ),
+    pendingOperations: snapshot.pendingOperations.filter((operation) => operation.localId !== id)
+  })
+
+  return serverCredential
 }
 
 async function parseJsonResponse(response: Response) {
@@ -449,8 +515,13 @@ function reconcileConfirmedOperations(
         }
 
         if (conflictedLocalIds.has(credential.id) && credential.status !== "pending_create") {
+          const conflictOperation = conflictOperations.find(
+            (operation) => operation.localId === credential.id
+          )
+
           return {
             ...credential,
+            conflictCredential: conflictOperation?.credential ?? null,
             status: "sync_conflict"
           }
         }
@@ -498,6 +569,7 @@ function localCredentialFromSyncedCredential(credential: SyncedCredential): Loca
   return {
     ...credential,
     baseUpdatedAt: credential.updatedAt,
+    conflictCredential: null,
     deletedAt: null,
     serverId: credential.id,
     status: "synced"

@@ -872,9 +872,153 @@ describe("mobileSync", () => {
     await syncEncryptedCredentials()
 
     await expect(getCachedCredential("1")).resolves.toMatchObject({
+      conflictCredential: {
+        displayName: "GitHub Server",
+        updatedAt: "2026-06-16T10:03:00Z"
+      },
       displayName: "GitHub Local",
       status: "sync_conflict"
     })
     await expect(getPendingCredentialOperations()).resolves.toHaveLength(1)
+  })
+
+  it("rebases conflicted local changes before retrying them", async () => {
+    mockStorage()
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "1",
+            displayName: "GitHub Local",
+            domain: "github.com",
+            category: "login",
+            encryptedSecretPayload: "local-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: "1",
+            status: "sync_conflict",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            conflictCredential: {
+              id: "1",
+              displayName: "GitHub Server",
+              domain: "github.com",
+              category: "login",
+              encryptedSecretPayload: "server-payload",
+              updatedAt: "2026-06-16T10:03:00Z"
+            },
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_update",
+            type: "update",
+            localId: "1",
+            serverId: "1",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "GitHub Local",
+              domain: "github.com",
+              category: "login",
+              encryptedSecretPayload: "local-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+
+    const { getCachedCredential, getPendingCredentialOperations, keepLocalCredentialChanges } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredential: (id: string) => Promise<{
+          baseUpdatedAt: string | null
+          conflictCredential: unknown
+          status: string
+        } | null>
+        getPendingCredentialOperations: () => Promise<{ baseUpdatedAt: string | null }[]>
+        keepLocalCredentialChanges: (id: string) => Promise<unknown>
+      }
+
+    await keepLocalCredentialChanges("1")
+
+    await expect(getCachedCredential("1")).resolves.toMatchObject({
+      baseUpdatedAt: "2026-06-16T10:03:00Z",
+      conflictCredential: null,
+      status: "pending_update"
+    })
+    await expect(getPendingCredentialOperations()).resolves.toMatchObject([
+      { baseUpdatedAt: "2026-06-16T10:03:00Z" }
+    ])
+  })
+
+  it("discards conflicted local changes when using the server version", async () => {
+    mockStorage()
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "1",
+            displayName: "GitHub Local",
+            domain: "github.com",
+            category: "login",
+            encryptedSecretPayload: "local-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: "1",
+            status: "sync_conflict",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            conflictCredential: {
+              id: "1",
+              displayName: "GitHub Server",
+              domain: "github.com",
+              category: "login",
+              encryptedSecretPayload: "server-payload",
+              updatedAt: "2026-06-16T10:03:00Z"
+            },
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_update",
+            type: "update",
+            localId: "1",
+            serverId: "1",
+            baseUpdatedAt: "2026-06-16T10:00:00Z",
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "GitHub Local",
+              domain: "github.com",
+              category: "login",
+              encryptedSecretPayload: "local-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+
+    const { applyServerCredentialVersion, getCachedCredential, getPendingCredentialOperations } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        applyServerCredentialVersion: (id: string) => Promise<unknown>
+        getCachedCredential: (
+          id: string
+        ) => Promise<{ displayName: string; encryptedSecretPayload: string; status: string } | null>
+        getPendingCredentialOperations: () => Promise<unknown[]>
+      }
+
+    await applyServerCredentialVersion("1")
+
+    await expect(getCachedCredential("1")).resolves.toMatchObject({
+      displayName: "GitHub Server",
+      encryptedSecretPayload: "server-payload",
+      status: "synced"
+    })
+    await expect(getPendingCredentialOperations()).resolves.toEqual([])
   })
 })

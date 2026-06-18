@@ -6,6 +6,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import {
   deleteLocalCredential,
   getCachedCredential,
+  keepLocalCredentialChanges,
+  applyServerCredentialVersion,
   subscribeCredentialRepository,
   syncEncryptedCredentialsInBackground,
   type LocalCredential
@@ -29,6 +31,7 @@ export default function CredentialDetailScreen() {
   const [areNotesVisible, setAreNotesVisible] = useState(false)
   const [copyStatus, setCopyStatus] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isResolvingConflict, setIsResolvingConflict] = useState(false)
 
   useFocusEffect(
     useCallback(() => {
@@ -87,6 +90,7 @@ export default function CredentialDetailScreen() {
         setIsPasswordVisible(false)
         setAreNotesVisible(false)
         setCopyStatus(null)
+        setIsResolvingConflict(false)
       }
     }, [id])
   )
@@ -156,6 +160,35 @@ export default function CredentialDetailScreen() {
     }
   }
 
+  async function keepLocalChanges() {
+    if (!credential || isResolvingConflict) return
+
+    setIsResolvingConflict(true)
+
+    try {
+      await keepLocalCredentialChanges(credential.id)
+      void syncEncryptedCredentialsInBackground()
+    } catch {
+      setStatus("failed")
+    } finally {
+      setIsResolvingConflict(false)
+    }
+  }
+
+  async function useServerVersion() {
+    if (!credential || isResolvingConflict) return
+
+    setIsResolvingConflict(true)
+
+    try {
+      await applyServerCredentialVersion(credential.id)
+    } catch {
+      setStatus("failed")
+    } finally {
+      setIsResolvingConflict(false)
+    }
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={styles.headerRow}>
@@ -185,6 +218,28 @@ export default function CredentialDetailScreen() {
             {[credential.domain, credential.category].filter(Boolean).join(" · ")}
           </Text>
           <CredentialSyncNotice status={credential.status} />
+          {credential.status === "sync_conflict" ? (
+            <View style={styles.conflictActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isResolvingConflict}
+                onPress={keepLocalChanges}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {isResolvingConflict ? "Resolving..." : "Keep my changes"}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isResolvingConflict}
+                onPress={useServerVersion}
+                style={styles.revealButton}
+              >
+                <Text style={styles.revealButtonText}>Use server version</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <View style={styles.cardActions}>
             <Pressable
               accessibilityRole="button"
@@ -422,6 +477,11 @@ const styles = StyleSheet.create({
   conflictNotice: {
     backgroundColor: "#f4d0c7",
     color: "#a33b2a"
+  },
+  conflictActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10
   },
   cardActions: {
     flexDirection: "row",
