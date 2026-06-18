@@ -675,8 +675,9 @@ function getStatusTitle(status: DetailStatus) {
 
 function getStatusMessage(status: DetailStatus) {
   if (status === "locked") return "Unlock your vault to view this stored item."
-  if (status === "missing") return "This item is not available in offline mode."
-  if (status === "failed") return "Try returning to the vault and opening this item again."
+  if (status === "missing")
+    return "This item is not available on this device. Sync again when the server is reachable."
+  if (status === "failed") return "Return to the vault and try opening this item again."
 
   return "Loading the local item."
 }

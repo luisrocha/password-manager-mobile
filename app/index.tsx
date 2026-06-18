@@ -314,9 +314,14 @@ function CredentialSyncSummary({
           style={styles.credentialList}
         />
       ) : credentials.length > 0 ? (
-        <Text style={styles.emptyText}>No items match this search.</Text>
+        <Text style={styles.emptyText}>
+          No items match this search. Try a title, username, domain, or category.
+        </Text>
       ) : (
-        <Text style={styles.emptyText}>No synced items on this device yet.</Text>
+        <Text style={styles.emptyText}>
+          No stored items on this device yet. Add an item here, or sync from the web app when the
+          server is available.
+        </Text>
       )}
     </View>
   )

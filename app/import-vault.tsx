@@ -63,7 +63,6 @@ export default function ImportVaultScreen() {
       await importVaultBackupWithPairingCode(code, deviceName)
       setStatus("imported")
     } catch (importError) {
-      console.error(importError)
       setError(getImportErrorMessage(importError))
       setStatus("failed")
     }
