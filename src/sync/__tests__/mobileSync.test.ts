@@ -186,6 +186,69 @@ describe("mobileSync", () => {
     jest.useRealTimers()
   })
 
+  it("preserves queued local changes when foreground sync cannot reach the server", async () => {
+    mockStorage()
+    secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
+    asyncValues.set(
+      "passwordManager.syncedCredentials",
+      JSON.stringify({
+        credentials: [
+          {
+            id: "credential_local",
+            displayName: "Local Only",
+            domain: "local.test",
+            category: "login",
+            encryptedSecretPayload: "local-only-payload",
+            updatedAt: "2026-06-16T10:02:00Z",
+            serverId: null,
+            status: "pending_create",
+            baseUpdatedAt: null,
+            deletedAt: null
+          }
+        ],
+        pendingOperations: [
+          {
+            id: "operation_create",
+            type: "create",
+            localId: "credential_local",
+            serverId: null,
+            baseUpdatedAt: null,
+            createdAt: "2026-06-16T10:02:00Z",
+            credential: {
+              displayName: "Local Only",
+              domain: "local.test",
+              category: "login",
+              encryptedSecretPayload: "local-only-payload"
+            }
+          }
+        ],
+        syncedAt: "2026-06-16T10:01:00Z",
+        version: 1
+      })
+    )
+    globalThis.fetch = jest.fn(() =>
+      Promise.reject(new TypeError("Network request failed"))
+    ) as unknown as typeof fetch
+
+    const { getCachedCredentials, getPendingCredentialOperations, syncEncryptedCredentials } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/sync/mobileSync") as {
+        getCachedCredentials: () => Promise<{
+          credentials: { id: string; status: string }[]
+        }>
+        getPendingCredentialOperations: () => Promise<{ id: string; type: string }[]>
+        syncEncryptedCredentials: () => Promise<unknown>
+      }
+
+    await expect(syncEncryptedCredentials()).rejects.toThrow("mobile_sync_network_failed")
+    await expect(getCachedCredentials()).resolves.toMatchObject({
+      credentials: [{ id: "credential_local", status: "pending_create" }]
+    })
+    await expect(getPendingCredentialOperations()).resolves.toMatchObject([
+      { id: "operation_create", type: "create" }
+    ])
+  })
+
   it("ignores background sync failures because local changes stay queued", async () => {
     mockStorage()
 
