@@ -21,8 +21,6 @@ Android-first Expo mobile app for the self-hosted password manager.
 
 Copy `.env.example` to `.env` for local development and replace placeholders.
 
-Do not commit real API tokens, passwords, private keys, vault backups, or QR payload captures.
-
 ## Commands
 
 ```bash
