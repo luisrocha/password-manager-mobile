@@ -1,15 +1,15 @@
 import { NativeModules, Platform } from "react-native"
 
 interface AutofillSettingsNativeModule {
-  openAutofillSettings: () => Promise<boolean>
+  openAndroidSettings: () => Promise<boolean>
 }
 
 const autofillSettingsModule = NativeModules.PasswordManagerAutofillSettings as
   | AutofillSettingsNativeModule
   | undefined
 
-export async function openAutofillSettings() {
+export async function openAndroidSettings() {
   if (Platform.OS !== "android" || !autofillSettingsModule) return false
 
-  return autofillSettingsModule.openAutofillSettings()
+  return autofillSettingsModule.openAndroidSettings()
 }

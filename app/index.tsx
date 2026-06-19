@@ -2,7 +2,6 @@ import { Link, router, useFocusEffect, type Href } from "expo-router"
 import { useCallback, useDeferredValue, useMemo, useState } from "react"
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
-import { openAutofillSettings } from "@/autofill/autofillSettings"
 import { env } from "@/config/env"
 import { credentialMatchesDomain, normalizeCredentialDomain } from "@/credentials/domainMatching"
 import {
@@ -39,7 +38,6 @@ export default function HomeScreen() {
   const [credentials, setCredentials] = useState<LocalCredential[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [autofillSettingsError, setAutofillSettingsError] = useState<string | null>(null)
   const canUnlock = hasImportedVault && masterPassword.length > 0 && status !== "unlocking"
 
   useFocusEffect(
@@ -139,17 +137,6 @@ export default function HomeScreen() {
     }
   }
 
-  async function openAutofillSetup() {
-    setAutofillSettingsError(null)
-
-    try {
-      const opened = await openAutofillSettings()
-      if (!opened) setAutofillSettingsError("Autofill settings are only available on Android.")
-    } catch {
-      setAutofillSettingsError("Could not open Autofill settings on this device.")
-    }
-  }
-
   if (status === "unlocked") {
     return (
       <View style={styles.unlockedScreen}>
@@ -161,7 +148,7 @@ export default function HomeScreen() {
           <View style={styles.unlockedHeaderActions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => void openAutofillSetup()}
+              onPress={() => router.push("/autofill-setup")}
               style={styles.secondaryHeaderButton}
             >
               <Text style={styles.secondaryHeaderButtonText}>Autofill</Text>
@@ -255,12 +242,11 @@ export default function HomeScreen() {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          onPress={() => void openAutofillSetup()}
+          onPress={() => router.push("/autofill-setup")}
           style={styles.tertiaryButton}
         >
           <Text style={styles.tertiaryButtonText}>Autofill settings</Text>
         </Pressable>
-        {autofillSettingsError ? <Text style={styles.error}>{autofillSettingsError}</Text> : null}
       </View>
     </ScrollView>
   )
