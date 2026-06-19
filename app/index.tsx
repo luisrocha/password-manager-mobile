@@ -2,6 +2,7 @@ import { Link, router, useFocusEffect, type Href } from "expo-router"
 import { useCallback, useDeferredValue, useMemo, useState } from "react"
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 
+import { openAutofillSettings } from "@/autofill/autofillSettings"
 import { env } from "@/config/env"
 import { credentialMatchesDomain, normalizeCredentialDomain } from "@/credentials/domainMatching"
 import {
@@ -38,6 +39,7 @@ export default function HomeScreen() {
   const [credentials, setCredentials] = useState<LocalCredential[]>([])
   const [lastSyncedAt, setLastSyncedAt] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [autofillSettingsError, setAutofillSettingsError] = useState<string | null>(null)
   const canUnlock = hasImportedVault && masterPassword.length > 0 && status !== "unlocking"
 
   useFocusEffect(
@@ -137,6 +139,17 @@ export default function HomeScreen() {
     }
   }
 
+  async function openAutofillSetup() {
+    setAutofillSettingsError(null)
+
+    try {
+      const opened = await openAutofillSettings()
+      if (!opened) setAutofillSettingsError("Autofill settings are only available on Android.")
+    } catch {
+      setAutofillSettingsError("Could not open Autofill settings on this device.")
+    }
+  }
+
   if (status === "unlocked") {
     return (
       <View style={styles.unlockedScreen}>
@@ -145,9 +158,18 @@ export default function HomeScreen() {
             <Text style={styles.eyebrow}>Password Manager Mobile</Text>
             <Text style={styles.meta}>Server: {env.apiBaseUrl}</Text>
           </View>
-          <Pressable onPress={lock} style={styles.lockButton}>
-            <Text style={styles.lockButtonText}>Lock</Text>
-          </Pressable>
+          <View style={styles.unlockedHeaderActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void openAutofillSetup()}
+              style={styles.secondaryHeaderButton}
+            >
+              <Text style={styles.secondaryHeaderButtonText}>Autofill</Text>
+            </Pressable>
+            <Pressable onPress={lock} style={styles.lockButton}>
+              <Text style={styles.lockButtonText}>Lock</Text>
+            </Pressable>
+          </View>
         </View>
 
         <CredentialSyncSummary
@@ -231,6 +253,14 @@ export default function HomeScreen() {
             </Pressable>
           </Link>
         ) : null}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void openAutofillSetup()}
+          style={styles.tertiaryButton}
+        >
+          <Text style={styles.tertiaryButtonText}>Autofill settings</Text>
+        </Pressable>
+        {autofillSettingsError ? <Text style={styles.error}>{autofillSettingsError}</Text> : null}
       </View>
     </ScrollView>
   )
@@ -503,6 +533,22 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 16
+  },
+  unlockedHeaderActions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  secondaryHeaderButton: {
+    alignItems: "center",
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: "#2f3740"
+  },
+  secondaryHeaderButtonText: {
+    color: "#f4efe6",
+    fontSize: 14,
+    fontWeight: "900"
   },
   headerCopy: {
     flex: 1,
