@@ -159,7 +159,11 @@ describe("vaultService", () => {
     const { importVaultBackupWithPairingCode } =
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("@/vault/vaultService") as {
-        importVaultBackupWithPairingCode: (code: string, deviceName?: string) => Promise<unknown>
+        importVaultBackupWithPairingCode: (
+          code: string,
+          deviceName?: string,
+          options?: { replaceExistingVault?: boolean }
+        ) => Promise<unknown>
       }
 
     await expect(importVaultBackupWithPairingCode("ABCD-EFGH", "Luis Pixel")).resolves.toEqual(
@@ -175,6 +179,121 @@ describe("vaultService", () => {
     )
     expect(importVaultBackup).toHaveBeenCalledWith(JSON.stringify(expandedVaultBackup))
     expect(storeMobileDeviceToken).toHaveBeenCalledWith("raw-device-token")
+  })
+
+  it("refreshes device tokens without replacing matching imported vaults", async () => {
+    const exportVaultBackup = jest.fn(() => Promise.resolve(JSON.stringify(mobileVaultTransfer)))
+    const importVaultBackup = jest.fn()
+    const storeMobileDeviceToken = jest.fn(() => Promise.resolve())
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            deviceToken: "refreshed-device-token",
+            encryptedVaultBackup: JSON.stringify(mobileVaultTransfer)
+          })
+      })
+    ) as unknown as typeof fetch
+
+    jest.doMock("@/config/env", () => ({
+      env: {
+        apiBaseUrl: "https://vault.localhost"
+      }
+    }))
+    jest.doMock("@/runtime/installMobileCryptoRuntime", () => ({
+      ensureMobileCryptoRuntime: jest.fn(() => Promise.resolve(true))
+    }))
+    jest.doMock("@/vault/capabilities", () => ({
+      assertVaultCryptoCapabilities: jest.fn()
+    }))
+    jest.doMock("@/vault/vaultCrypto", () => ({
+      createMobileVaultCrypto: jest.fn(() => ({
+        exportVaultBackup,
+        hasStoredVault: jest.fn(() => Promise.resolve(true)),
+        importVaultBackup,
+        lockVault: jest.fn()
+      }))
+    }))
+    jest.doMock("@/sync/mobileSync", () => ({
+      storeMobileDeviceToken
+    }))
+
+    const { importVaultBackupWithPairingCode } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/vault/vaultService") as {
+        importVaultBackupWithPairingCode: (
+          code: string,
+          deviceName?: string,
+          options?: { replaceExistingVault?: boolean }
+        ) => Promise<unknown>
+      }
+
+    await expect(
+      importVaultBackupWithPairingCode("ABCD-EFGH", "Luis Pixel", {
+        replaceExistingVault: false
+      })
+    ).resolves.toEqual(expandedVaultBackup)
+    expect(importVaultBackup).not.toHaveBeenCalled()
+    expect(exportVaultBackup).toHaveBeenCalled()
+    expect(storeMobileDeviceToken).toHaveBeenCalledWith("refreshed-device-token")
+  })
+
+  it("rejects re-pairing when the returned vault backup does not match the imported vault", async () => {
+    const differentVaultBackup = { ...expandedVaultBackup, publicKey: "different-public-key" }
+    const importVaultBackup = jest.fn()
+    const storeMobileDeviceToken = jest.fn(() => Promise.resolve())
+    globalThis.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            deviceToken: "refreshed-device-token",
+            encryptedVaultBackup: JSON.stringify(differentVaultBackup)
+          })
+      })
+    ) as unknown as typeof fetch
+
+    jest.doMock("@/config/env", () => ({
+      env: {
+        apiBaseUrl: "https://vault.localhost"
+      }
+    }))
+    jest.doMock("@/runtime/installMobileCryptoRuntime", () => ({
+      ensureMobileCryptoRuntime: jest.fn(() => Promise.resolve(true))
+    }))
+    jest.doMock("@/vault/capabilities", () => ({
+      assertVaultCryptoCapabilities: jest.fn()
+    }))
+    jest.doMock("@/vault/vaultCrypto", () => ({
+      createMobileVaultCrypto: jest.fn(() => ({
+        exportVaultBackup: jest.fn(() => Promise.resolve(JSON.stringify(mobileVaultTransfer))),
+        hasStoredVault: jest.fn(() => Promise.resolve(true)),
+        importVaultBackup,
+        lockVault: jest.fn()
+      }))
+    }))
+    jest.doMock("@/sync/mobileSync", () => ({
+      storeMobileDeviceToken
+    }))
+
+    const { importVaultBackupWithPairingCode } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@/vault/vaultService") as {
+        importVaultBackupWithPairingCode: (
+          code: string,
+          deviceName?: string,
+          options?: { replaceExistingVault?: boolean }
+        ) => Promise<unknown>
+      }
+
+    await expect(
+      importVaultBackupWithPairingCode("ABCD-EFGH", "Luis Pixel", {
+        replaceExistingVault: false
+      })
+    ).rejects.toThrow("pairing_vault_mismatch")
+    expect(importVaultBackup).not.toHaveBeenCalled()
+    expect(storeMobileDeviceToken).not.toHaveBeenCalled()
   })
 
   it("rejects pairing responses without device tokens", async () => {

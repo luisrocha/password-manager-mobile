@@ -86,9 +86,29 @@ export async function encryptCredentialSecretPayload(payload: CredentialSecretPa
   return (await getVaultCrypto()).encryptText(JSON.stringify(payload))
 }
 
-export async function importVaultBackupWithPairingCode(code: string, deviceName?: string) {
+export async function importVaultBackupWithPairingCode(
+  code: string,
+  deviceName?: string,
+  options: { replaceExistingVault?: boolean } = {}
+) {
   const { deviceToken, serializedBackup } = await redeemVaultPairingCode(code, deviceName)
-  const importedBackup = await importEncryptedVaultBackup(serializedBackup)
+  const normalizedBackup = normalizeVaultBackupImport(serializedBackup)
+  const vaultCryptoAdapter = await getVaultCrypto()
+  const shouldKeepExistingVault =
+    options.replaceExistingVault === false && (await vaultCryptoAdapter.hasStoredVault())
+
+  if (shouldKeepExistingVault) {
+    const existingBackup = normalizeVaultBackupImport(await vaultCryptoAdapter.exportVaultBackup())
+
+    if (existingBackup !== normalizedBackup) {
+      throw new Error("pairing_vault_mismatch")
+    }
+
+    await storeMobileDeviceToken(deviceToken)
+    return JSON.parse(existingBackup) as VaultBackup
+  }
+
+  const importedBackup = await vaultCryptoAdapter.importVaultBackup(normalizedBackup)
   await storeMobileDeviceToken(deviceToken)
 
   return importedBackup

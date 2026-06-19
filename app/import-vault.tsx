@@ -11,23 +11,27 @@ function getImportErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not set up this device."
 
   if (error.message === "vault_unsupported") {
-    return "This vault backup version is not supported."
+    return "This vault key version is not supported."
   }
 
   if (error.message === "vault_invalid" || error instanceof SyntaxError) {
-    return "The vault backup returned by the server is invalid."
+    return "The vault key returned by the server is invalid."
   }
 
   if (error.message === "pairing_not_found") {
-    return "That pairing code expired or was already used."
+    return "Code expired or was already used."
   }
 
   if (error.message === "pairing_failed" || error.message === "pairing_invalid_response") {
     return "Could not pair with that pairing code."
   }
 
+  if (error.message === "pairing_vault_mismatch") {
+    return "Invalid pairing code."
+  }
+
   if (error.message === "pairing_network_failed") {
-    return `Could not reach ${env.apiBaseUrl}. Use the computer's local network IP address, not localhost.`
+    return `Could not reach ${env.apiBaseUrl}. Check your network connection and try again.`
   }
 
   return "Could not set up this device."
@@ -60,7 +64,9 @@ export default function ImportVaultScreen() {
     setStatus("importing")
 
     try {
-      await importVaultBackupWithPairingCode(code, deviceName)
+      await importVaultBackupWithPairingCode(code, deviceName, {
+        replaceExistingVault: !isRepairing
+      })
       setStatus("imported")
     } catch (importError) {
       setError(getImportErrorMessage(importError))

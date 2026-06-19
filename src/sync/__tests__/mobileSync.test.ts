@@ -133,7 +133,7 @@ describe("mobileSync", () => {
     await expect(syncEncryptedCredentials()).rejects.toThrow("mobile_sync_token_missing")
   })
 
-  it("reports revoked mobile device tokens", async () => {
+  it("clears and reports revoked mobile device tokens", async () => {
     mockStorage()
     secureValues.set("passwordManager.mobileDeviceToken", "raw-token")
     globalThis.fetch = jest.fn(() =>
@@ -150,6 +150,7 @@ describe("mobileSync", () => {
       }
 
     await expect(syncEncryptedCredentials()).rejects.toThrow("mobile_sync_unauthorized")
+    expect(secureValues.has("passwordManager.mobileDeviceToken")).toBe(false)
   })
 
   it("reports stalled sync requests as network failures", async () => {

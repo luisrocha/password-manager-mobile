@@ -166,6 +166,7 @@ async function performCredentialSync() {
 
   if (!response.ok) {
     if (isRecord(body) && body.code === "invalid_mobile_device_token") {
+      await clearMobileDeviceToken()
       throw new Error("mobile_sync_unauthorized")
     }
 
