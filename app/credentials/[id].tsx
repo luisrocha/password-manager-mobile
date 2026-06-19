@@ -113,8 +113,7 @@ export default function CredentialDetailScreen() {
       setSecretPayload(payload)
 
       return payload
-    } catch (error) {
-      console.error(error)
+    } catch {
       setStatus("locked")
       return null
     }

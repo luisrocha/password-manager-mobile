@@ -132,7 +132,6 @@ export default function HomeScreen() {
       } else if (syncError instanceof Error && syncError.message === "mobile_sync_network_failed") {
         setSyncStatus("offline")
       } else {
-        console.error(syncError)
         setSyncStatus("failed")
       }
     }
