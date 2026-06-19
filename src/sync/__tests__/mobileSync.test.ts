@@ -40,6 +40,14 @@ describe("mobileSync", () => {
         apiBaseUrl: "https://vault.localhost"
       }
     }))
+    jest.doMock("@/vault/vaultService", () => ({
+      buildMobileSyncProof: jest.fn((challenge: string) =>
+        Promise.resolve({
+          signature: `signed:${challenge}`,
+          signingPublicKeySpki: "signing-public-key"
+        })
+      )
+    }))
   }
 
   it("stores the mobile device token in secure storage", async () => {
@@ -110,6 +118,8 @@ describe("mobileSync", () => {
         body: undefined,
         headers: {
           Accept: "application/json",
+          "X-Mobile-Sync-Signature": "signed:mobile-sync:v1:GET:/api/mobile/credentials/sync:",
+          "X-Mobile-Sync-Signing-Key": "signing-public-key",
           Authorization: "Bearer raw-token"
         },
         method: "GET"
@@ -589,6 +599,10 @@ describe("mobileSync", () => {
       "https://vault.localhost/api/mobile/credentials/sync",
       expect.objectContaining({
         body: expect.stringContaining("operation_create"),
+        headers: expect.objectContaining({
+          "X-Mobile-Sync-Signature": expect.stringContaining("signed:mobile-sync:v1:"),
+          "X-Mobile-Sync-Signing-Key": "signing-public-key"
+        }),
         method: "POST"
       })
     )

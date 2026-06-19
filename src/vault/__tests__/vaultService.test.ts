@@ -2,7 +2,7 @@ describe("vaultService", () => {
   beforeEach(() => {
     jest.resetModules()
     jest.restoreAllMocks()
-    jest.doMock("@/sync/mobileSync", () => ({
+    jest.doMock("@/sync/mobileDeviceToken", () => ({
       storeMobileDeviceToken: jest.fn(() => Promise.resolve())
     }))
   })
@@ -152,7 +152,7 @@ describe("vaultService", () => {
         lockVault: jest.fn()
       }))
     }))
-    jest.doMock("@/sync/mobileSync", () => ({
+    jest.doMock("@/sync/mobileDeviceToken", () => ({
       storeMobileDeviceToken
     }))
 
@@ -215,7 +215,7 @@ describe("vaultService", () => {
         lockVault: jest.fn()
       }))
     }))
-    jest.doMock("@/sync/mobileSync", () => ({
+    jest.doMock("@/sync/mobileDeviceToken", () => ({
       storeMobileDeviceToken
     }))
 
@@ -273,7 +273,7 @@ describe("vaultService", () => {
         lockVault: jest.fn()
       }))
     }))
-    jest.doMock("@/sync/mobileSync", () => ({
+    jest.doMock("@/sync/mobileDeviceToken", () => ({
       storeMobileDeviceToken
     }))
 

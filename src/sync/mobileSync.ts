@@ -2,8 +2,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage"
 import { z } from "zod"
 
 import { env } from "@/config/env"
-import { MOBILE_DEVICE_TOKEN_STORAGE_KEY, SYNCED_CREDENTIALS_STORAGE_KEY } from "@/vault/constants"
-import { createSecureValueStorage } from "@/vault/storage"
+import {
+  clearMobileDeviceToken,
+  getMobileDeviceToken,
+  storeMobileDeviceToken
+} from "@/sync/mobileDeviceToken"
+import { SYNCED_CREDENTIALS_STORAGE_KEY } from "@/vault/constants"
+import { buildMobileSyncProof } from "@/vault/vaultService"
 
 const syncedCredentialSchema = z.object({
   id: z.string().min(1),
@@ -79,6 +84,7 @@ const credentialRepositorySchema = z.object({
   version: z.literal(1)
 })
 
+const MOBILE_SYNC_PATH = "/api/mobile/credentials/sync"
 const SYNC_REQUEST_TIMEOUT_MS = 8_000
 
 export type SyncedCredential = z.infer<typeof syncedCredentialSchema>
@@ -97,9 +103,10 @@ export interface CredentialRepositorySnapshot extends CachedCredentials {
   version: 1
 }
 
-const secureStorage = createSecureValueStorage()
 const credentialRepositoryListeners = new Set<() => void>()
 let syncRequestPromise: Promise<CachedCredentials> | null = null
+
+export { clearMobileDeviceToken, getMobileDeviceToken, storeMobileDeviceToken }
 
 export function subscribeCredentialRepository(listener: () => void) {
   credentialRepositoryListeners.add(listener)
@@ -107,21 +114,6 @@ export function subscribeCredentialRepository(listener: () => void) {
   return () => {
     credentialRepositoryListeners.delete(listener)
   }
-}
-
-export async function storeMobileDeviceToken(token: string) {
-  const normalizedToken = token.trim()
-  if (!normalizedToken) throw new Error("mobile_device_token_missing")
-
-  await secureStorage.set(MOBILE_DEVICE_TOKEN_STORAGE_KEY, normalizedToken)
-}
-
-export async function getMobileDeviceToken() {
-  return secureStorage.get(MOBILE_DEVICE_TOKEN_STORAGE_KEY)
-}
-
-export async function clearMobileDeviceToken() {
-  await secureStorage.remove(MOBILE_DEVICE_TOKEN_STORAGE_KEY)
 }
 
 export async function syncEncryptedCredentials() {
@@ -143,15 +135,20 @@ async function performCredentialSync() {
     requestMethod === "POST"
       ? JSON.stringify({ operations: currentSnapshot.pendingOperations })
       : undefined
+  const syncProof = await buildMobileSyncProof(
+    syncSignatureChallenge(requestMethod, MOBILE_SYNC_PATH, requestBody)
+  )
 
   try {
     response = await fetchWithTimeout(
-      `${env.apiBaseUrl}/api/mobile/credentials/sync`,
+      `${env.apiBaseUrl}${MOBILE_SYNC_PATH}`,
       {
         method: requestMethod,
         headers: {
           Accept: "application/json",
           ...(requestBody ? { "Content-Type": "application/json" } : {}),
+          "X-Mobile-Sync-Signature": syncProof.signature,
+          "X-Mobile-Sync-Signing-Key": syncProof.signingPublicKeySpki,
           Authorization: `Bearer ${token}`
         },
         body: requestBody
@@ -189,6 +186,10 @@ async function performCredentialSync() {
   await storeCredentialRepositorySnapshot(nextSnapshot)
 
   return visibleCredentialCache(nextSnapshot)
+}
+
+function syncSignatureChallenge(method: string, path: string, requestBody = "") {
+  return `mobile-sync:v1:${method}:${path}:${requestBody}`
 }
 
 export async function syncEncryptedCredentialsInBackground() {

@@ -1,6 +1,6 @@
 import { ensureMobileCryptoRuntime } from "@/runtime/installMobileCryptoRuntime"
 import { env } from "@/config/env"
-import { storeMobileDeviceToken } from "@/sync/mobileSync"
+import { storeMobileDeviceToken } from "@/sync/mobileDeviceToken"
 import { assertVaultCryptoCapabilities } from "@/vault/capabilities"
 import type { VaultBackup, VaultCrypto } from "@/vault/types"
 
@@ -84,6 +84,10 @@ export async function decryptCredentialSecretPayload(
 
 export async function encryptCredentialSecretPayload(payload: CredentialSecretPayload) {
   return (await getVaultCrypto()).encryptText(JSON.stringify(payload))
+}
+
+export async function buildMobileSyncProof(challenge: string) {
+  return (await getVaultCrypto()).buildUnlockProof(challenge)
 }
 
 export async function importVaultBackupWithPairingCode(
