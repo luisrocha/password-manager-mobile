@@ -30,6 +30,7 @@
         <data android:scheme="password-manager"/>
       </intent-filter>
     </activity>
+    <activity android:name=".AutofillActivity" android:excludeFromRecents="true" android:theme="@style/Theme.App.SplashScreen" android:exported="false" android:screenOrientation="portrait"/>
     <service android:name=".PasswordManagerAutofillService" android:permission="android.permission.BIND_AUTOFILL_SERVICE" android:exported="true">
       <intent-filter>
         <action android:name="android.service.autofill.AutofillService"/>

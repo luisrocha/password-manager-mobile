@@ -1,5 +1,7 @@
 package com.luisrocha.passwordmanager
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 
@@ -10,13 +12,42 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 import expo.modules.ReactActivityDelegateWrapper
 
-class MainActivity : ReactActivity() {
+open class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
+    val normalizedIntent = normalizeEntryIntent(intent)
+    setIntent(normalizedIntent)
     super.onCreate(null)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    val normalizedIntent = normalizeEntryIntent(intent)
+    setIntent(normalizedIntent)
+    super.onNewIntent(normalizedIntent)
+  }
+
+  protected fun normalizeEntryIntent(intent: Intent): Intent {
+    if (intent.hasExtra(PasswordManagerAutofillService.extraAutofillIds)) {
+      return normalizeAutofillIntent(intent)
+    }
+
+    return intent
+  }
+
+  protected fun normalizeAutofillIntent(intent: Intent): Intent {
+    if (!intent.hasExtra(PasswordManagerAutofillService.extraAutofillIds)) {
+      return intent
+    }
+
+    return intent.apply {
+      action = Intent.ACTION_VIEW
+      data = Uri.parse(PasswordManagerAutofillService.autofillRouteUri)
+      addCategory(Intent.CATEGORY_DEFAULT)
+      addCategory(Intent.CATEGORY_BROWSABLE)
+    }
   }
 
   /**

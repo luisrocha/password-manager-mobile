@@ -36,6 +36,7 @@ export interface CredentialSecretPayload {
 }
 
 let vaultCrypto: VaultCrypto | null = null
+const vaultStateSubscribers = new Set<() => void>()
 
 async function getVaultCrypto() {
   await ensureMobileCryptoRuntime()
@@ -71,7 +72,9 @@ export async function importEncryptedVaultBackup(serializedBackup: string) {
 }
 
 export async function unlockImportedVault(masterPassword: string) {
-  return (await getVaultCrypto()).unlockVault(masterPassword)
+  const result = await (await getVaultCrypto()).unlockVault(masterPassword)
+  notifyVaultStateSubscribers()
+  return result
 }
 
 export async function decryptCredentialSecretPayload(
@@ -121,7 +124,22 @@ export async function importVaultBackupWithPairingCode(
 export async function lockVault() {
   if (vaultCrypto !== null) {
     vaultCrypto.lockVault()
+    notifyVaultStateSubscribers()
   }
+}
+
+export function subscribeVaultState(listener: () => void) {
+  vaultStateSubscribers.add(listener)
+
+  return () => {
+    vaultStateSubscribers.delete(listener)
+  }
+}
+
+function notifyVaultStateSubscribers() {
+  vaultStateSubscribers.forEach((listener) => {
+    listener()
+  })
 }
 
 export function normalizeVaultBackupImport(serializedBackup: string) {

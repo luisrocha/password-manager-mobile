@@ -14,6 +14,7 @@ import {
   hasImportedVaultBackup,
   isVaultUnlocked,
   lockVault,
+  subscribeVaultState,
   unlockImportedVault
 } from "@/vault/vaultService"
 
@@ -72,6 +73,14 @@ export default function HomeScreen() {
           setStatus("idle")
         })
       })
+      const unsubscribeVaultState = subscribeVaultState(() => {
+        refreshLocalState().catch(() => {
+          if (!isActive) return
+
+          setHasImportedVault(false)
+          setStatus("idle")
+        })
+      })
 
       refreshLocalState().catch(() => {
         if (!isActive) return
@@ -83,6 +92,7 @@ export default function HomeScreen() {
       return () => {
         isActive = false
         unsubscribe()
+        unsubscribeVaultState()
       }
     }, [])
   )
