@@ -13,6 +13,10 @@ import {
 
 import { env } from "@/config/env"
 import { normalizeCredentialDomain } from "@/credentials/domainMatching"
+import {
+  credentialUsernameCacheKey,
+  loadCredentialUsernameIndex
+} from "@/credentials/credentialUsernameIndex"
 import { guardedPush } from "@/navigation/guardedRouter"
 import {
   getCachedCredentials,
@@ -21,7 +25,6 @@ import {
   type LocalCredential
 } from "@/sync/mobileSync"
 import {
-  decryptCredentialSecretPayload,
   hasImportedVaultBackup,
   isVaultUnlocked,
   lockVault,
@@ -333,7 +336,9 @@ function CredentialSyncSummary({
     let isActive = true
 
     async function hydrateUsernames() {
-      const hydratedUsernames = await decryptCredentialUsernames(credentials, () => isActive)
+      const hydratedUsernames = await loadCredentialUsernameIndex(credentials).catch(() =>
+        blankUsernamesByCredentialKey(credentials)
+      )
       if (!isActive) return
 
       setUsernameByCredentialKey(hydratedUsernames)
@@ -555,46 +560,10 @@ function credentialMatchesNormalizedDomain(credentialDomain: string, targetDomai
   return targetDomain.endsWith(`.${credentialDomain}`)
 }
 
-async function decryptCredentialUsernames(credentials: LocalCredential[], isActive: () => boolean) {
-  const usernameEntries = await mapWithConcurrency(credentials, 8, async (credential) => {
-    if (!isActive()) return null
-
-    const username = await decryptCredentialSecretPayload(credential.encryptedSecretPayload)
-      .then((secret) => secret.username)
-      .catch(() => "")
-
-    return [credentialUsernameCacheKey(credential), username] as const
-  })
-
-  if (!isActive()) return {}
-
-  return Object.fromEntries(usernameEntries.filter((entry): entry is [string, string] => !!entry))
-}
-
-function credentialUsernameCacheKey(credential: LocalCredential) {
-  return `${credential.id}:${credential.updatedAt}`
-}
-
-async function mapWithConcurrency<T, Result>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<Result>
-) {
-  const results = new Array<Result>(items.length)
-  let nextIndex = 0
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex
-      nextIndex += 1
-      results[currentIndex] = await mapper(items[currentIndex])
-    }
-  }
-
-  const workerCount = Math.min(concurrency, items.length)
-  await Promise.all(Array.from({ length: workerCount }, worker))
-
-  return results
+function blankUsernamesByCredentialKey(credentials: LocalCredential[]) {
+  return Object.fromEntries(
+    credentials.map((credential) => [credentialUsernameCacheKey(credential), ""] as const)
+  )
 }
 
 function compareCredentials(first: LocalCredential, second: LocalCredential) {

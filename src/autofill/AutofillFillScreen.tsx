@@ -18,6 +18,10 @@ import {
   type AutofillRequest
 } from "@/autofill/autofillSettings"
 import { normalizeCredentialDomain } from "@/credentials/domainMatching"
+import {
+  credentialUsernameCacheKey,
+  loadCredentialUsernameIndex
+} from "@/credentials/credentialUsernameIndex"
 import { getCachedCredentials, type LocalCredential } from "@/sync/mobileSync"
 import {
   decryptCredentialSecretPayload,
@@ -150,7 +154,7 @@ export function AutofillFillScreen({
         setStatus(unlocked ? "ready" : "locked")
         if (unlocked) {
           Keyboard.dismiss()
-          scheduleCredentialUsernameHydration(
+          loadCredentialUsernamesFromIndex(
             cache.credentials,
             () => isActive,
             setUsernameByCredentialKey
@@ -169,7 +173,7 @@ export function AutofillFillScreen({
       setStatus(unlocked ? "ready" : "locked")
       if (unlocked) {
         Keyboard.dismiss()
-        scheduleCredentialUsernameHydration(
+        loadCredentialUsernamesFromIndex(
           cache.credentials,
           () => isActive,
           setUsernameByCredentialKey
@@ -216,7 +220,7 @@ export function AutofillFillScreen({
       setMasterPassword("")
       setStatus("ready")
       Keyboard.dismiss()
-      scheduleCredentialUsernameHydration(
+      loadCredentialUsernamesFromIndex(
         credentials,
         () => mountedRef.current,
         setUsernameByCredentialKey
@@ -436,63 +440,26 @@ function credentialMatchesNormalizedDomain(credentialDomain: string, targetDomai
   return targetDomain.endsWith(`.${credentialDomain}`)
 }
 
-function scheduleCredentialUsernameHydration(
+function loadCredentialUsernamesFromIndex(
   credentials: LocalCredential[],
   isActive: () => boolean,
   setUsernameByCredentialKey: (usernames: Record<string, string>) => void
 ) {
   requestAnimationFrame(() => {
     setTimeout(() => {
-      void hydrateCredentialUsernames(credentials, isActive, setUsernameByCredentialKey)
+      void loadCredentialUsernameIndex(credentials)
+        .catch(() => blankUsernamesByCredentialKey(credentials))
+        .then((usernames) => {
+          if (isActive()) setUsernameByCredentialKey(usernames)
+        })
     }, 0)
   })
 }
 
-async function hydrateCredentialUsernames(
-  credentials: LocalCredential[],
-  isActive: () => boolean,
-  setUsernameByCredentialKey: (usernames: Record<string, string>) => void
-) {
-  const usernameEntries = await mapWithConcurrency(credentials, 8, async (credential) => {
-    if (!isActive()) return null
-    const username = await decryptCredentialSecretPayload(credential.encryptedSecretPayload)
-      .then((secret) => secret.username)
-      .catch(() => "")
-
-    return [credentialUsernameCacheKey(credential), username] as const
-  })
-
-  if (!isActive()) return
-
-  setUsernameByCredentialKey(
-    Object.fromEntries(usernameEntries.filter((entry): entry is [string, string] => !!entry))
+function blankUsernamesByCredentialKey(credentials: LocalCredential[]) {
+  return Object.fromEntries(
+    credentials.map((credential) => [credentialUsernameCacheKey(credential), ""] as const)
   )
-}
-
-async function mapWithConcurrency<T, Result>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<Result>
-) {
-  const results = new Array<Result>(items.length)
-  let nextIndex = 0
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex
-      nextIndex += 1
-      results[currentIndex] = await mapper(items[currentIndex])
-    }
-  }
-
-  const workerCount = Math.min(concurrency, items.length)
-  await Promise.all(Array.from({ length: workerCount }, worker))
-
-  return results
-}
-
-function credentialUsernameCacheKey(credential: LocalCredential) {
-  return `${credential.id}:${credential.updatedAt}`
 }
 
 function getDefaultSearch(request: AutofillRequest) {

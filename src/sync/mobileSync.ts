@@ -7,7 +7,10 @@ import {
   getMobileDeviceToken,
   storeMobileDeviceToken
 } from "@/sync/mobileDeviceToken"
-import { SYNCED_CREDENTIALS_STORAGE_KEY } from "@/vault/constants"
+import {
+  CREDENTIAL_USERNAME_INDEX_STORAGE_KEY,
+  SYNCED_CREDENTIALS_STORAGE_KEY
+} from "@/vault/constants"
 import { buildMobileSyncProof } from "@/vault/vaultService"
 
 const syncedCredentialSchema = z.object({
@@ -358,7 +361,10 @@ export async function deleteLocalCredential(id: string) {
 }
 
 export async function clearCachedCredentials() {
-  await AsyncStorage.removeItem(SYNCED_CREDENTIALS_STORAGE_KEY)
+  await AsyncStorage.multiRemove([
+    SYNCED_CREDENTIALS_STORAGE_KEY,
+    CREDENTIAL_USERNAME_INDEX_STORAGE_KEY
+  ])
 }
 
 export async function keepLocalCredentialChanges(id: string) {

@@ -89,6 +89,14 @@ export async function encryptCredentialSecretPayload(payload: CredentialSecretPa
   return (await getVaultCrypto()).encryptText(JSON.stringify(payload))
 }
 
+export async function encryptVaultText(plaintext: string) {
+  return (await getVaultCrypto()).encryptText(plaintext)
+}
+
+export async function decryptVaultText(ciphertext: string) {
+  return (await getVaultCrypto()).decryptText(ciphertext)
+}
+
 export async function buildMobileSyncProof(challenge: string) {
   return (await getVaultCrypto()).buildUnlockProof(challenge)
 }
