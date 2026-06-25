@@ -1,9 +1,19 @@
-import { Link, router, useFocusEffect, type Href } from "expo-router"
-import { useCallback, useDeferredValue, useMemo, useState } from "react"
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { useFocusEffect, type Href } from "expo-router"
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native"
 
 import { env } from "@/config/env"
-import { credentialMatchesDomain, normalizeCredentialDomain } from "@/credentials/domainMatching"
+import { normalizeCredentialDomain } from "@/credentials/domainMatching"
+import { guardedPush } from "@/navigation/guardedRouter"
 import {
   getCachedCredentials,
   subscribeCredentialRepository,
@@ -11,6 +21,7 @@ import {
   type LocalCredential
 } from "@/sync/mobileSync"
 import {
+  decryptCredentialSecretPayload,
   hasImportedVaultBackup,
   isVaultUnlocked,
   lockVault,
@@ -20,7 +31,7 @@ import {
 
 type UnlockStatus = "checking" | "idle" | "unlocking" | "unlocked" | "failed"
 type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "reconnect" | "failed"
-type SearchableCredential = LocalCredential & { searchText: string }
+type SearchableCredential = LocalCredential & { normalizedDomain: string; searchText: string }
 
 function getUnlockErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return "Could not unlock this vault."
@@ -158,7 +169,7 @@ export default function HomeScreen() {
           <View style={styles.unlockedHeaderActions}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => router.push("/autofill-setup")}
+              onPress={() => guardedPush("/autofill-setup")}
               style={styles.secondaryHeaderButton}
             >
               <Text style={styles.secondaryHeaderButtonText}>Autofill</Text>
@@ -180,13 +191,7 @@ export default function HomeScreen() {
   }
 
   if (status === "checking") {
-    return (
-      <View style={styles.loadingScreen}>
-        <View style={styles.loadingTrack}>
-          <View style={styles.loadingBar} />
-        </View>
-      </View>
-    )
+    return <LoadingScreen />
   }
 
   return (
@@ -236,23 +241,25 @@ export default function HomeScreen() {
             </Pressable>
           </>
         ) : (
-          <Link href={{ pathname: "/import-vault", params: { mode: "setup" } }} asChild>
-            <Pressable style={styles.button}>
-              <Text style={styles.buttonText}>Set up device</Text>
-            </Pressable>
-          </Link>
+          <Pressable
+            onPress={() => guardedPush({ pathname: "/import-vault", params: { mode: "setup" } })}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>Set up device</Text>
+          </Pressable>
         )}
 
         {hasImportedVault ? (
-          <Link href={{ pathname: "/import-vault", params: { mode: "repair" } }} asChild>
-            <Pressable style={styles.tertiaryButton}>
-              <Text style={styles.tertiaryButtonText}>Re-pair device</Text>
-            </Pressable>
-          </Link>
+          <Pressable
+            onPress={() => guardedPush({ pathname: "/import-vault", params: { mode: "repair" } })}
+            style={styles.tertiaryButton}
+          >
+            <Text style={styles.tertiaryButtonText}>Re-pair device</Text>
+          </Pressable>
         ) : null}
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push("/autofill-setup")}
+          onPress={() => guardedPush("/autofill-setup")}
           style={styles.tertiaryButton}
         >
           <Text style={styles.tertiaryButtonText}>Autofill settings</Text>
@@ -275,8 +282,18 @@ function CredentialSyncSummary({
   onSync,
   syncStatus
 }: CredentialSyncSummaryProps) {
+  const isOpeningCredentialRef = useRef(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [openingCredentialId, setOpeningCredentialId] = useState<string | null>(null)
+  const [usernameByCredentialKey, setUsernameByCredentialKey] = useState<Record<string, string>>({})
   const deferredSearchQuery = useDeferredValue(searchQuery)
+  const areCredentialUsernamesReady = useMemo(
+    () =>
+      credentials.every((credential) =>
+        Object.hasOwn(usernameByCredentialKey, credentialUsernameCacheKey(credential))
+      ),
+    [credentials, usernameByCredentialKey]
+  )
   const searchableCredentials = useMemo(
     () => buildSearchableCredentials(credentials),
     [credentials]
@@ -285,10 +302,53 @@ function CredentialSyncSummary({
     () => filterCredentials(searchableCredentials, deferredSearchQuery),
     [searchableCredentials, deferredSearchQuery]
   )
+  const openCredential = useCallback((credentialId: string) => {
+    if (isOpeningCredentialRef.current) return
+
+    isOpeningCredentialRef.current = true
+    setOpeningCredentialId(credentialId)
+    guardedPush(credentialDetailHref(credentialId))
+  }, [])
   const renderCredential = useCallback(
-    ({ item }: { item: SearchableCredential }) => <CredentialListItem credential={item} />,
-    []
+    ({ item }: { item: SearchableCredential }) => (
+      <CredentialListItem
+        credential={item}
+        disabled={openingCredentialId !== null}
+        isOpening={openingCredentialId === item.id}
+        onOpen={openCredential}
+        username={usernameByCredentialKey[credentialUsernameCacheKey(item)] ?? ""}
+      />
+    ),
+    [openCredential, openingCredentialId, usernameByCredentialKey]
   )
+
+  useFocusEffect(
+    useCallback(() => {
+      isOpeningCredentialRef.current = false
+      setOpeningCredentialId(null)
+    }, [])
+  )
+
+  useEffect(() => {
+    let isActive = true
+
+    async function hydrateUsernames() {
+      const hydratedUsernames = await decryptCredentialUsernames(credentials, () => isActive)
+      if (!isActive) return
+
+      setUsernameByCredentialKey(hydratedUsernames)
+    }
+
+    void hydrateUsernames()
+
+    return () => {
+      isActive = false
+    }
+  }, [credentials])
+
+  if (credentials.length > 0 && !areCredentialUsernamesReady) {
+    return <LoadingScreen />
+  }
 
   return (
     <View style={styles.credentialPanel}>
@@ -302,7 +362,7 @@ function CredentialSyncSummary({
         <View style={styles.headerActions}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push("/credentials/new")}
+            onPress={() => guardedPush("/credentials/new")}
             style={styles.addButton}
           >
             <Text style={styles.addButtonText}>Add item</Text>
@@ -311,7 +371,7 @@ function CredentialSyncSummary({
       </View>
       <Text style={styles.syncStatus}>{getSyncStatusMessage(syncStatus, lastSyncedAt)}</Text>
       <SyncRecoveryActions onSync={onSync} syncStatus={syncStatus} />
-      {credentials.length > 0 ? (
+      {credentials.length > 0 && areCredentialUsernamesReady ? (
         <View style={styles.searchRow}>
           <TextInput
             autoCapitalize="none"
@@ -338,6 +398,7 @@ function CredentialSyncSummary({
       {filteredCredentials.length > 0 ? (
         <FlatList
           data={filteredCredentials}
+          extraData={usernameByCredentialKey}
           keyExtractor={(credential) => credential.id}
           keyboardShouldPersistTaps="handled"
           onRefresh={onSync}
@@ -348,7 +409,7 @@ function CredentialSyncSummary({
         />
       ) : credentials.length > 0 ? (
         <Text style={styles.emptyText}>
-          No items match this search. Try a title, username, domain, or category.
+          No items match this search. Try a title, domain, or category.
         </Text>
       ) : (
         <Text style={styles.emptyText}>
@@ -372,7 +433,7 @@ function SyncRecoveryActions({
       <View style={styles.syncActionRow}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push({ pathname: "/import-vault", params: { mode: "repair" } })}
+          onPress={() => guardedPush({ pathname: "/import-vault", params: { mode: "repair" } })}
           style={styles.syncActionButton}
         >
           <Text style={styles.syncActionButtonText}>Re-pair device</Text>
@@ -393,35 +454,51 @@ function SyncRecoveryActions({
 }
 
 interface CredentialListItemProps {
-  credential: LocalCredential
+  credential: SearchableCredential
+  disabled: boolean
+  isOpening: boolean
+  onOpen: (credentialId: string) => void
+  username: string
 }
 
-function CredentialListItem({ credential }: CredentialListItemProps) {
+const CredentialListItem = memo(function CredentialListItem({
+  credential,
+  disabled,
+  isOpening,
+  onOpen,
+  username
+}: CredentialListItemProps) {
+  const openCredential = useCallback(() => {
+    if (disabled) return
+
+    onOpen(credential.id)
+  }, [credential.id, disabled, onOpen])
+
   return (
     <Pressable
       accessibilityRole="button"
-      onPress={() => router.push(credentialDetailHref(credential.id))}
-      style={styles.credentialRow}
+      android_ripple={{ color: "#eadcca" }}
+      disabled={disabled}
+      onPress={openCredential}
+      style={({ pressed }) => [
+        styles.credentialRow,
+        pressed ? styles.credentialRowPressed : null,
+        isOpening ? styles.credentialRowOpening : null
+      ]}
     >
       <Text style={styles.credentialName}>
         {credential.displayName || credential.domain || "Untitled"}
       </Text>
-      <Text style={styles.credentialMeta}>
-        {[credential.domain, credential.category].filter(Boolean).join(" · ")}
-      </Text>
-      <CredentialStatusBadge status={credential.status} />
+      {username ? <Text style={styles.credentialUsername}>{username}</Text> : null}
     </Pressable>
   )
-}
+})
 
-function CredentialStatusBadge({ status }: { status: LocalCredential["status"] }) {
-  const label = getCredentialStatusLabel(status)
-  if (!label) return null
-
+function LoadingScreen() {
   return (
-    <Text style={[styles.statusBadge, status === "sync_conflict" ? styles.conflictBadge : null]}>
-      {label}
-    </Text>
+    <View style={styles.loadingScreen}>
+      <ActivityIndicator color="#d95d39" size="large" />
+    </View>
   )
 }
 
@@ -436,27 +513,28 @@ function getSyncStatusMessage(syncStatus: SyncStatus, lastSyncedAt: string) {
 }
 
 function buildSearchableCredentials(credentials: LocalCredential[]): SearchableCredential[] {
-  return [...credentials].sort(compareCredentials).map((credential) => ({
-    ...credential,
-    searchText: [
-      credential.displayName,
-      credential.domain,
-      normalizeCredentialDomain(credential.domain),
-      credential.category
-    ]
-      .join(" ")
-      .toLowerCase()
-  }))
+  return [...credentials].sort(compareCredentials).map((credential) => {
+    const normalizedDomain = normalizeCredentialDomain(credential.domain)
+
+    return {
+      ...credential,
+      normalizedDomain,
+      searchText: [credential.displayName, credential.domain, normalizedDomain, credential.category]
+        .join(" ")
+        .toLowerCase()
+    }
+  })
 }
 
 function filterCredentials(credentials: SearchableCredential[], searchQuery: string) {
   const normalizedQuery = searchQuery.trim().toLowerCase()
   if (!normalizedQuery) return credentials
+  const normalizedQueryDomain = normalizeCredentialDomain(normalizedQuery)
 
   return credentials.filter(
     (credential) =>
       credential.searchText.includes(normalizedQuery) ||
-      credentialMatchesDomain(credential, normalizedQuery)
+      credentialMatchesNormalizedDomain(credential.normalizedDomain, normalizedQueryDomain)
   )
 }
 
@@ -470,6 +548,55 @@ function credentialDetailHref(id: string): Href {
   return `/credentials/${encodeURIComponent(id)}` as Href
 }
 
+function credentialMatchesNormalizedDomain(credentialDomain: string, targetDomain: string) {
+  if (!credentialDomain || !targetDomain) return false
+  if (credentialDomain === targetDomain) return true
+
+  return targetDomain.endsWith(`.${credentialDomain}`)
+}
+
+async function decryptCredentialUsernames(credentials: LocalCredential[], isActive: () => boolean) {
+  const usernameEntries = await mapWithConcurrency(credentials, 8, async (credential) => {
+    if (!isActive()) return null
+
+    const username = await decryptCredentialSecretPayload(credential.encryptedSecretPayload)
+      .then((secret) => secret.username)
+      .catch(() => "")
+
+    return [credentialUsernameCacheKey(credential), username] as const
+  })
+
+  if (!isActive()) return {}
+
+  return Object.fromEntries(usernameEntries.filter((entry): entry is [string, string] => !!entry))
+}
+
+function credentialUsernameCacheKey(credential: LocalCredential) {
+  return `${credential.id}:${credential.updatedAt}`
+}
+
+async function mapWithConcurrency<T, Result>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<Result>
+) {
+  const results = new Array<Result>(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await mapper(items[currentIndex])
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length)
+  await Promise.all(Array.from({ length: workerCount }, worker))
+
+  return results
+}
+
 function compareCredentials(first: LocalCredential, second: LocalCredential) {
   const firstLabel = (first.displayName || first.domain || "").toLowerCase()
   const secondLabel = (second.displayName || second.domain || "").toLowerCase()
@@ -477,15 +604,6 @@ function compareCredentials(first: LocalCredential, second: LocalCredential) {
   if (labelComparison !== 0) return labelComparison
 
   return first.id.localeCompare(second.id)
-}
-
-function getCredentialStatusLabel(status: LocalCredential["status"]) {
-  if (status === "sync_conflict") return "Sync conflict"
-  if (status === "pending_create") return "Pending sync"
-  if (status === "pending_update") return "Pending sync"
-  if (status === "pending_delete") return "Pending delete"
-
-  return null
 }
 
 const styles = StyleSheet.create({
@@ -509,20 +627,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 32,
     backgroundColor: "#101820"
-  },
-  loadingTrack: {
-    width: "44%",
-    maxWidth: 180,
-    height: 5,
-    overflow: "hidden",
-    borderRadius: 999,
-    backgroundColor: "#2b3742"
-  },
-  loadingBar: {
-    width: "58%",
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#d95d39"
   },
   unlockedHeader: {
     flexDirection: "row",
@@ -750,31 +854,22 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: "#fff8ef"
   },
+  credentialRowPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.99 }]
+  },
+  credentialRowOpening: {
+    opacity: 0.62
+  },
   credentialName: {
     color: "#101820",
     fontSize: 15,
     fontWeight: "800"
   },
-  credentialMeta: {
+  credentialUsername: {
     color: "#59636c",
-    fontSize: 13
-  },
-  statusBadge: {
-    alignSelf: "flex-start",
-    marginTop: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    overflow: "hidden",
-    backgroundColor: "#efe1c8",
-    color: "#6d5f45",
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase"
-  },
-  conflictBadge: {
-    backgroundColor: "#f4d0c7",
-    color: "#a33b2a"
+    fontSize: 13,
+    fontWeight: "700"
   },
   emptyText: {
     color: "#59636c",

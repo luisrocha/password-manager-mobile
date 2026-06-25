@@ -21,6 +21,7 @@ import {
   syncEncryptedCredentialsInBackground,
   type LocalCredential
 } from "@/sync/mobileSync"
+import { guardedPush } from "@/navigation/guardedRouter"
 import {
   decryptCredentialSecretPayload,
   isVaultUnlocked,
@@ -245,7 +246,7 @@ export default function CredentialDetailScreen() {
               <Pressable
                 accessibilityRole="button"
                 onPress={() =>
-                  router.push(`/credentials/${encodeURIComponent(credential.id)}/edit`)
+                  guardedPush(`/credentials/${encodeURIComponent(credential.id)}/edit`)
                 }
                 style={styles.secondaryButton}
               >

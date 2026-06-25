@@ -1,5 +1,15 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react"
-import { Keyboard, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import {
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native"
 
 import {
   completeAutofill,
@@ -7,7 +17,7 @@ import {
   getPendingAutofillRequest,
   type AutofillRequest
 } from "@/autofill/autofillSettings"
-import { credentialMatchesDomain, normalizeCredentialDomain } from "@/credentials/domainMatching"
+import { normalizeCredentialDomain } from "@/credentials/domainMatching"
 import { getCachedCredentials, type LocalCredential } from "@/sync/mobileSync"
 import {
   decryptCredentialSecretPayload,
@@ -17,8 +27,8 @@ import {
 
 type Status = "checking" | "locked" | "ready" | "filling" | "failed"
 type AutofillCredential = LocalCredential & {
+  normalizedDomain: string
   searchText: string
-  username: string
 }
 
 interface AutofillFillScreenProps {
@@ -32,6 +42,8 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
   const [masterPassword, setMasterPassword] = useState("")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [fillingCredentialKey, setFillingCredentialKey] = useState<string | null>(null)
+  const [usernameByCredentialKey, setUsernameByCredentialKey] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<Status>("checking")
   const [error, setError] = useState<string | null>(null)
   const deferredSearchQuery = useDeferredValue(searchQuery)
@@ -40,6 +52,13 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
   const searchableCredentials = useMemo(
     () => [...credentials].sort(compareCredentials),
     [credentials]
+  )
+  const areCredentialUsernamesReady = useMemo(
+    () =>
+      credentials.every((credential) =>
+        Object.hasOwn(usernameByCredentialKey, credentialUsernameCacheKey(credential))
+      ),
+    [credentials, usernameByCredentialKey]
   )
   const visibleCredentials = useMemo(
     () => filterAutofillCredentials(searchableCredentials, deferredSearchQuery),
@@ -52,6 +71,7 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
       }
 
       let stage = "decrypt credential"
+      setFillingCredentialKey(credentialUsernameCacheKey(credential))
       setError(null)
       setStatus("filling")
 
@@ -62,6 +82,7 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
         stage = "close autofill screen"
         onFinished?.()
       } catch (caughtError) {
+        setFillingCredentialKey(null)
         setStatus("ready")
         const debugState = await getAutofillDebugState().catch(() => null)
         const formattedError = formatAutofillError(stage, caughtError, debugState)
@@ -75,6 +96,18 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
     },
     [onFinished, status]
   )
+  const renderCredential = useCallback(
+    ({ item }: { item: AutofillCredential }) => (
+      <AutofillCredentialRow
+        credential={item}
+        disabled={status === "filling"}
+        onPress={fillCredential}
+        isFilling={fillingCredentialKey === credentialUsernameCacheKey(item)}
+        username={usernameByCredentialKey[credentialUsernameCacheKey(item)] ?? ""}
+      />
+    ),
+    [fillCredential, fillingCredentialKey, status, usernameByCredentialKey]
+  )
 
   useEffect(() => {
     let isActive = true
@@ -87,7 +120,7 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
         getCachedCredentials()
       ])
       if (!isActive) return
-      const autofillCredentials = cache.credentials.map(buildLockedAutofillCredential)
+      const autofillCredentials = cache.credentials.map(buildAutofillCredential)
 
       if (!pendingRequest) {
         await waitForAutofillRequestRetry()
@@ -108,7 +141,11 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
         setStatus(unlocked ? "ready" : "locked")
         if (unlocked) {
           Keyboard.dismiss()
-          scheduleCredentialUsernameHydration(cache.credentials, () => isActive, setCredentials)
+          scheduleCredentialUsernameHydration(
+            cache.credentials,
+            () => isActive,
+            setUsernameByCredentialKey
+          )
         }
         return
       }
@@ -119,7 +156,11 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
       setStatus(unlocked ? "ready" : "locked")
       if (unlocked) {
         Keyboard.dismiss()
-        scheduleCredentialUsernameHydration(cache.credentials, () => isActive, setCredentials)
+        scheduleCredentialUsernameHydration(
+          cache.credentials,
+          () => isActive,
+          setUsernameByCredentialKey
+        )
       }
     }
 
@@ -141,12 +182,13 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
     if (status !== "checking") Keyboard.dismiss()
   }, [status])
 
-  if (status === "checking") {
+  if (
+    status === "checking" ||
+    ((status === "ready" || status === "filling") && !areCredentialUsernamesReady)
+  ) {
     return (
       <View style={styles.loadingScreen}>
-        <View style={styles.loadingTrack}>
-          <View style={styles.loadingBar} />
-        </View>
+        <ActivityIndicator color="#d95d39" size="large" />
       </View>
     )
   }
@@ -161,10 +203,69 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
       setMasterPassword("")
       setStatus("ready")
       Keyboard.dismiss()
-      scheduleCredentialUsernameHydration(credentials, () => mountedRef.current, setCredentials)
+      scheduleCredentialUsernameHydration(
+        credentials,
+        () => mountedRef.current,
+        setUsernameByCredentialKey
+      )
     } catch {
       setError("Password is incorrect or failed to unlock vault.")
     }
+  }
+
+  if (status === "ready" || status === "filling") {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>Autofill</Text>
+        </View>
+
+        <View style={[styles.card, styles.credentialCard]}>
+          <Text style={styles.title}>{copy.title}</Text>
+          <Text style={styles.body}>{copy.body}</Text>
+
+          <View style={styles.searchRow}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+              onChangeText={setSearchQuery}
+              placeholder="Search items"
+              placeholderTextColor="#8f8778"
+              style={styles.searchInput}
+              value={searchQuery}
+            />
+            {searchQuery ? (
+              <Pressable
+                accessibilityLabel="Clear search"
+                accessibilityRole="button"
+                onPress={() => setSearchQuery("")}
+                style={styles.searchClearButton}
+              >
+                <Text style={styles.searchClearButtonText}>×</Text>
+              </Pressable>
+            ) : null}
+          </View>
+
+          {visibleCredentials.length > 0 ? (
+            <FlatList
+              contentContainerStyle={styles.credentialListContent}
+              data={visibleCredentials}
+              extraData={usernameByCredentialKey}
+              keyExtractor={(credential) => credential.id}
+              keyboardShouldPersistTaps="handled"
+              renderItem={renderCredential}
+              showsVerticalScrollIndicator={false}
+              style={styles.credentialList}
+            />
+          ) : (
+            <Text style={styles.meta}>No matching credentials stored on this device.</Text>
+          )}
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        </View>
+      </View>
+    )
   }
 
   return (
@@ -208,47 +309,6 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
             >
               <Text style={styles.buttonText}>Unlock</Text>
             </Pressable>
-          </>
-        ) : null}
-
-        {status === "ready" || status === "filling" ? (
-          <>
-            <View style={styles.searchRow}>
-              <TextInput
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="while-editing"
-                onChangeText={setSearchQuery}
-                placeholder="Search items"
-                placeholderTextColor="#8f8778"
-                style={styles.searchInput}
-                value={searchQuery}
-              />
-              {searchQuery ? (
-                <Pressable
-                  accessibilityLabel="Clear search"
-                  accessibilityRole="button"
-                  onPress={() => setSearchQuery("")}
-                  style={styles.searchClearButton}
-                >
-                  <Text style={styles.searchClearButtonText}>×</Text>
-                </Pressable>
-              ) : null}
-            </View>
-            <View style={styles.credentialList}>
-              {visibleCredentials.length > 0 ? (
-                visibleCredentials.map((credential) => (
-                  <AutofillCredentialRow
-                    credential={credential}
-                    disabled={status === "filling"}
-                    key={credential.id}
-                    onPress={fillCredential}
-                  />
-                ))
-              ) : (
-                <Text style={styles.meta}>No matching credentials stored on this device.</Text>
-              )}
-            </View>
           </>
         ) : null}
 
@@ -307,30 +367,38 @@ function waitForAutofillRequestRetry() {
 interface AutofillCredentialRowProps {
   credential: AutofillCredential
   disabled: boolean
+  isFilling: boolean
   onPress: (credential: AutofillCredential) => void
+  username: string
 }
 
 const AutofillCredentialRow = memo(function AutofillCredentialRow({
   credential,
   disabled,
-  onPress
+  isFilling,
+  onPress,
+  username
 }: AutofillCredentialRowProps) {
+  const fillCredential = useCallback(() => {
+    onPress(credential)
+  }, [credential, onPress])
+
   return (
     <Pressable
       accessibilityRole="button"
+      android_ripple={{ color: "#eadcca" }}
       disabled={disabled}
-      onPress={() => onPress(credential)}
-      style={styles.credentialRow}
+      onPress={fillCredential}
+      style={({ pressed }) => [
+        styles.credentialRow,
+        pressed ? styles.credentialRowPressed : null,
+        isFilling ? styles.credentialRowFilling : null
+      ]}
     >
       <Text style={styles.credentialTitle}>
         {credential.displayName || credential.domain || "Untitled"}
       </Text>
-      {credential.username ? (
-        <Text style={styles.credentialUsername}>{credential.username}</Text>
-      ) : null}
-      <Text style={styles.credentialMeta}>
-        {[credential.domain, credential.category].filter(Boolean).join(" · ")}
-      </Text>
+      {username ? <Text style={styles.credentialUsername}>{username}</Text> : null}
     </Pressable>
   )
 })
@@ -339,22 +407,30 @@ function filterAutofillCredentials(credentials: AutofillCredential[], searchQuer
   const normalizedSearchQuery = searchQuery.trim().toLowerCase()
 
   if (!normalizedSearchQuery) return credentials
+  const normalizedSearchDomain = normalizeCredentialDomain(normalizedSearchQuery)
 
   return credentials.filter(
     (credential) =>
       credential.searchText.includes(normalizedSearchQuery) ||
-      credentialMatchesDomain(credential, normalizedSearchQuery)
+      credentialMatchesNormalizedDomain(credential.normalizedDomain, normalizedSearchDomain)
   )
+}
+
+function credentialMatchesNormalizedDomain(credentialDomain: string, targetDomain: string) {
+  if (!credentialDomain || !targetDomain) return false
+  if (credentialDomain === targetDomain) return true
+
+  return targetDomain.endsWith(`.${credentialDomain}`)
 }
 
 function scheduleCredentialUsernameHydration(
   credentials: LocalCredential[],
   isActive: () => boolean,
-  setCredentials: (credentials: AutofillCredential[]) => void
+  setUsernameByCredentialKey: (usernames: Record<string, string>) => void
 ) {
   requestAnimationFrame(() => {
     setTimeout(() => {
-      void hydrateCredentialUsernames(credentials, isActive, setCredentials)
+      void hydrateCredentialUsernames(credentials, isActive, setUsernameByCredentialKey)
     }, 0)
   })
 }
@@ -362,31 +438,48 @@ function scheduleCredentialUsernameHydration(
 async function hydrateCredentialUsernames(
   credentials: LocalCredential[],
   isActive: () => boolean,
-  setCredentials: (credentials: AutofillCredential[]) => void
+  setUsernameByCredentialKey: (usernames: Record<string, string>) => void
 ) {
-  const hydratedCredentials: AutofillCredential[] = []
-
-  for (const credential of credentials) {
-    if (!isActive()) return
-
+  const usernameEntries = await mapWithConcurrency(credentials, 8, async (credential) => {
+    if (!isActive()) return null
     const username = await decryptCredentialSecretPayload(credential.encryptedSecretPayload)
       .then((secret) => secret.username)
       .catch(() => "")
 
-    hydratedCredentials.push(buildAutofillCredential(credential, username))
+    return [credentialUsernameCacheKey(credential), username] as const
+  })
 
-    if (hydratedCredentials.length % 4 === 0) {
-      await yieldToUi()
+  if (!isActive()) return
+
+  setUsernameByCredentialKey(
+    Object.fromEntries(usernameEntries.filter((entry): entry is [string, string] => !!entry))
+  )
+}
+
+async function mapWithConcurrency<T, Result>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<Result>
+) {
+  const results = new Array<Result>(items.length)
+  let nextIndex = 0
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex
+      nextIndex += 1
+      results[currentIndex] = await mapper(items[currentIndex])
     }
   }
 
-  if (isActive()) setCredentials(hydratedCredentials)
+  const workerCount = Math.min(concurrency, items.length)
+  await Promise.all(Array.from({ length: workerCount }, worker))
+
+  return results
 }
 
-function yieldToUi() {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0)
-  })
+function credentialUsernameCacheKey(credential: LocalCredential) {
+  return `${credential.id}:${credential.updatedAt}`
 }
 
 function getDefaultSearchQuery(request: AutofillRequest) {
@@ -402,23 +495,13 @@ function getDefaultSearchQuery(request: AutofillRequest) {
   return packageName
 }
 
-function buildLockedAutofillCredential(credential: LocalCredential): AutofillCredential {
-  return buildAutofillCredential(credential, "")
-}
+function buildAutofillCredential(credential: LocalCredential): AutofillCredential {
+  const normalizedDomain = normalizeCredentialDomain(credential.domain)
 
-function buildAutofillCredential(
-  credential: LocalCredential,
-  username: string
-): AutofillCredential {
   return {
     ...credential,
-    username,
-    searchText: [
-      credential.displayName,
-      credential.domain,
-      normalizeCredentialDomain(credential.domain),
-      credential.category
-    ]
+    normalizedDomain,
+    searchText: [credential.displayName, credential.domain, normalizedDomain, credential.category]
       .join(" ")
       .toLowerCase()
   }
@@ -457,21 +540,8 @@ const styles = StyleSheet.create({
     padding: 32,
     backgroundColor: "#101820"
   },
-  loadingTrack: {
-    width: "44%",
-    maxWidth: 180,
-    height: 5,
-    overflow: "hidden",
-    borderRadius: 999,
-    backgroundColor: "#2b3742"
-  },
-  loadingBar: {
-    width: "58%",
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#d95d39"
-  },
   screen: {
+    flex: 1,
     flexGrow: 1,
     gap: 18,
     padding: 20,
@@ -493,6 +563,10 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 28,
     backgroundColor: "#f4efe6"
+  },
+  credentialCard: {
+    flex: 1,
+    minHeight: 0
   },
   title: {
     color: "#101820",
@@ -584,6 +658,10 @@ const styles = StyleSheet.create({
     opacity: 0.55
   },
   credentialList: {
+    flex: 1,
+    minHeight: 0
+  },
+  credentialListContent: {
     gap: 10
   },
   credentialRow: {
@@ -592,14 +670,18 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: "#fff8ef"
   },
+  credentialRowPressed: {
+    opacity: 0.72,
+    transform: [{ scale: 0.99 }]
+  },
+  credentialRowFilling: {
+    opacity: 0.62,
+    backgroundColor: "#f1dfd3"
+  },
   credentialTitle: {
     color: "#101820",
     fontSize: 15,
     fontWeight: "800"
-  },
-  credentialMeta: {
-    color: "#59636c",
-    fontSize: 13
   },
   credentialUsername: {
     color: "#34414c",
