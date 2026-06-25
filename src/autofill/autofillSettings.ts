@@ -2,12 +2,14 @@ import { NativeModules, Platform } from "react-native"
 
 interface AutofillSettingsNativeModule {
   completeAutofill: (username: string, password: string) => Promise<boolean>
+  consumeShouldLockOnLauncherOpen: () => Promise<boolean>
   getAutofillDebugState: () => Promise<AutofillDebugState>
   getPendingAutofillRequest: () => Promise<AutofillRequest | null>
   openAndroidSettings: () => Promise<boolean>
 }
 
 export interface AutofillRequest {
+  appName: string
   fieldCount: number
   packageName: string
   webDomain: string
@@ -21,6 +23,7 @@ export interface AutofillDebugState {
   currentActivityClass: string
   currentActivityHasAutofillRequest: boolean
   pendingFieldCount: number
+  pendingAppName: string
   pendingPackageName: string
   pendingPresent: boolean
   pendingRoleCount: number
@@ -47,6 +50,12 @@ export async function completeAutofill(username: string, password: string) {
   if (Platform.OS !== "android" || !autofillSettingsModule) return false
 
   return autofillSettingsModule.completeAutofill(username, password)
+}
+
+export async function consumeShouldLockOnLauncherOpen() {
+  if (Platform.OS !== "android" || !autofillSettingsModule) return false
+
+  return autofillSettingsModule.consumeShouldLockOnLauncherOpen()
 }
 
 export async function openAndroidSettings() {

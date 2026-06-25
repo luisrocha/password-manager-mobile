@@ -3,7 +3,7 @@ import { StatusBar } from "expo-status-bar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { AppState, StyleSheet, View, type AppStateStatus } from "react-native"
 
-import { getAutofillDebugState } from "@/autofill/autofillSettings"
+import { consumeShouldLockOnLauncherOpen, getAutofillDebugState } from "@/autofill/autofillSettings"
 import { AutofillFillScreen } from "@/autofill/AutofillFillScreen"
 import { isLoadedVaultUnlocked, lockVault } from "@/vault/vaultService"
 
@@ -11,7 +11,9 @@ const BACKGROUND_AUTO_LOCK_DELAY_MS = 5 * 60 * 1000
 
 export default function RootLayout() {
   const [isNativeAutofillActivity, setIsNativeAutofillActivity] = useState<boolean | null>(null)
+  const [autofillRequestVersion, setAutofillRequestVersion] = useState(0)
   const appState = useRef<AppStateStatus>(AppState.currentState)
+  const autofillRequestSignature = useRef("")
   const backgroundedAt = useRef<number | null>(null)
   const autoLockTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -27,6 +29,11 @@ export default function RootLayout() {
     await lockVault()
     router.replace("/")
   }, [])
+  const lockIfReopenedAfterClose = useCallback(async () => {
+    if (!(await consumeShouldLockOnLauncherOpen())) return
+
+    await lockAndReturnHome()
+  }, [lockAndReturnHome])
   const shouldAutoLockAfterBackground = useCallback((startedAt: number | null) => {
     return (
       startedAt !== null &&
@@ -39,6 +46,15 @@ export default function RootLayout() {
 
     const shouldRenderAutofill =
       debugState?.bridgeActivityPresent === true && debugState.pendingPresent === true
+    const nextSignature = shouldRenderAutofill ? autofillDebugSignature(debugState) : ""
+
+    if (nextSignature !== autofillRequestSignature.current) {
+      autofillRequestSignature.current = nextSignature
+      if (nextSignature) {
+        setAutofillRequestVersion((currentVersion) => currentVersion + 1)
+      }
+    }
+
     setIsNativeAutofillActivity(shouldRenderAutofill)
   }, [])
 
@@ -48,6 +64,7 @@ export default function RootLayout() {
       appState.current = nextState
 
       if (nextState === "active") {
+        void lockIfReopenedAfterClose()
         void detectNativeAutofillActivity()
         const shouldLock = shouldAutoLockAfterBackground(backgroundedAt.current)
         backgroundedAt.current = null
@@ -74,6 +91,7 @@ export default function RootLayout() {
   }, [
     clearAutoLockTimer,
     detectNativeAutofillActivity,
+    lockIfReopenedAfterClose,
     lockAndReturnHome,
     shouldAutoLockAfterBackground
   ])
@@ -86,6 +104,7 @@ export default function RootLayout() {
     const tick = () => {
       if (!isActive) return
 
+      void lockIfReopenedAfterClose()
       void detectNativeAutofillActivity()
       attempts += 1
       if (attempts >= 12) return
@@ -99,7 +118,7 @@ export default function RootLayout() {
       isActive = false
       if (timer) clearTimeout(timer)
     }
-  }, [detectNativeAutofillActivity])
+  }, [detectNativeAutofillActivity, lockIfReopenedAfterClose])
 
   return (
     <>
@@ -115,12 +134,27 @@ export default function RootLayout() {
       {isNativeAutofillActivity === null ? <View style={styles.autofillOverlay} /> : null}
       {isNativeAutofillActivity ? (
         <View style={styles.autofillOverlay}>
-          <AutofillFillScreen onFinished={() => setIsNativeAutofillActivity(false)} />
+          <AutofillFillScreen
+            onFinished={() => setIsNativeAutofillActivity(false)}
+            requestVersion={autofillRequestVersion}
+          />
         </View>
       ) : null}
       <StatusBar style="light" />
     </>
   )
+}
+
+function autofillDebugSignature(
+  debugState: NonNullable<Awaited<ReturnType<typeof getAutofillDebugState>>>
+) {
+  return [
+    debugState.pendingPackageName,
+    debugState.pendingAppName,
+    debugState.pendingWebDomain,
+    debugState.pendingFieldCount,
+    debugState.pendingRoleCount
+  ].join("|")
 }
 
 const styles = StyleSheet.create({

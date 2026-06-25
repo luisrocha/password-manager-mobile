@@ -33,12 +33,17 @@ type AutofillCredential = LocalCredential & {
 
 interface AutofillFillScreenProps {
   onFinished?: () => void
+  requestVersion?: number
 }
 
-export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {}) {
+export function AutofillFillScreen({
+  onFinished,
+  requestVersion = 0
+}: AutofillFillScreenProps = {}) {
   const mountedRef = useRef(true)
   const [credentials, setCredentials] = useState<AutofillCredential[]>([])
   const [request, setRequest] = useState<AutofillRequest | null>(null)
+  const [targetName, setTargetName] = useState("")
   const [masterPassword, setMasterPassword] = useState("")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -47,8 +52,8 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
   const [status, setStatus] = useState<Status>("checking")
   const [error, setError] = useState<string | null>(null)
   const deferredSearchQuery = useDeferredValue(searchQuery)
-  const requestingDomain = request?.webDomain || request?.packageName || ""
-  const copy = getAutofillCopy(status, requestingDomain)
+  const requestingName = request ? getRequestDisplayName(request) : ""
+  const copy = getAutofillCopy(status, requestingName, targetName)
   const searchableCredentials = useMemo(
     () => [...credentials].sort(compareCredentials),
     [credentials]
@@ -65,7 +70,7 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
     [searchableCredentials, deferredSearchQuery]
   )
   const fillCredential = useCallback(
-    async (credential: LocalCredential) => {
+    async (credential: AutofillCredential) => {
       if (status === "filling") {
         return
       }
@@ -135,9 +140,13 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
           return
         }
 
+        const defaultSearch = getDefaultSearch(retriedRequest)
+        if (!isActive) return
+
         setRequest(retriedRequest)
         setCredentials(autofillCredentials)
-        setSearchQuery((currentQuery) => currentQuery || getDefaultSearchQuery(retriedRequest))
+        setTargetName(defaultSearch.targetName)
+        setSearchQuery(defaultSearch.query)
         setStatus(unlocked ? "ready" : "locked")
         if (unlocked) {
           Keyboard.dismiss()
@@ -150,9 +159,13 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
         return
       }
 
+      const defaultSearch = getDefaultSearch(pendingRequest)
+      if (!isActive) return
+
       setRequest(pendingRequest)
       setCredentials(autofillCredentials)
-      setSearchQuery((currentQuery) => currentQuery || getDefaultSearchQuery(pendingRequest))
+      setTargetName(defaultSearch.targetName)
+      setSearchQuery(defaultSearch.query)
       setStatus(unlocked ? "ready" : "locked")
       if (unlocked) {
         Keyboard.dismiss()
@@ -176,7 +189,7 @@ export function AutofillFillScreen({ onFinished }: AutofillFillScreenProps = {})
       isActive = false
       mountedRef.current = false
     }
-  }, [])
+  }, [requestVersion])
 
   useEffect(() => {
     if (status !== "checking") Keyboard.dismiss()
@@ -482,17 +495,22 @@ function credentialUsernameCacheKey(credential: LocalCredential) {
   return `${credential.id}:${credential.updatedAt}`
 }
 
-function getDefaultSearchQuery(request: AutofillRequest) {
-  if (request.webDomain) return normalizeCredentialDomain(request.webDomain) || request.webDomain
+function getDefaultSearch(request: AutofillRequest) {
+  if (request.webDomain) {
+    const domain = normalizeCredentialDomain(request.webDomain) || request.webDomain
 
-  const packageParts = request.packageName.split(".").filter(Boolean)
-  const packageName = packageParts.at(-1) ?? request.packageName
-
-  if (packageName === "browser" && packageParts.length > 1) {
-    return packageParts.at(-2) ?? packageName
+    return {
+      query: domain,
+      targetName: domain
+    }
   }
 
-  return packageName
+  const appName = request.appName.trim()
+
+  return {
+    query: appName,
+    targetName: appName
+  }
 }
 
 function buildAutofillCredential(credential: LocalCredential): AutofillCredential {
@@ -507,7 +525,14 @@ function buildAutofillCredential(credential: LocalCredential): AutofillCredentia
   }
 }
 
-function getAutofillCopy(status: Status, requestingDomain: string) {
+function getRequestDisplayName(request: AutofillRequest) {
+  if (request.webDomain) return normalizeCredentialDomain(request.webDomain) || request.webDomain
+  if (request.appName.trim()) return request.appName.trim()
+
+  return request.packageName
+}
+
+function getAutofillCopy(status: Status, requestingName: string, targetName: string) {
   if (status === "locked") {
     return {
       title: "Unlock the vault",
@@ -517,10 +542,15 @@ function getAutofillCopy(status: Status, requestingDomain: string) {
 
   return {
     title: "Choose a login",
-    body: requestingDomain
-      ? `Fill a credential for ${requestingDomain}.`
-      : "Fill a credential from this device."
+    body: getAutofillReadyBody(requestingName, targetName)
   }
+}
+
+function getAutofillReadyBody(requestingName: string, targetName: string) {
+  if (!requestingName) return "Fill a credential from this device."
+  if (targetName) return `Fill a credential for ${requestingName}.`
+
+  return `Choose a login for ${requestingName}.`
 }
 
 function compareCredentials(first: LocalCredential, second: LocalCredential) {

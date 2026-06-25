@@ -29,9 +29,22 @@ open class MainActivity : ReactActivity() {
     super.onNewIntent(normalizedIntent)
   }
 
+  override fun onDestroy() {
+    taskWasDestroyed = true
+    super.onDestroy()
+  }
+
   protected fun normalizeEntryIntent(intent: Intent): Intent {
     if (intent.hasExtra(PasswordManagerAutofillService.extraAutofillIds)) {
       return normalizeAutofillIntent(intent)
+    }
+
+    if (intent.isLauncherIntent()) {
+      PasswordManagerAutofillService.clearPendingAutofillIntent()
+      if (taskWasDestroyed) {
+        shouldLockOnNextLauncherOpen = true
+      }
+      taskWasDestroyed = false
     }
 
     return intent
@@ -47,6 +60,21 @@ open class MainActivity : ReactActivity() {
       data = Uri.parse(PasswordManagerAutofillService.autofillRouteUri)
       addCategory(Intent.CATEGORY_DEFAULT)
       addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+  }
+
+  private fun Intent.isLauncherIntent(): Boolean {
+    return action == Intent.ACTION_MAIN && categories?.contains(Intent.CATEGORY_LAUNCHER) == true
+  }
+
+  companion object {
+    private var taskWasDestroyed = false
+    private var shouldLockOnNextLauncherOpen = false
+
+    fun consumeShouldLockOnNextLauncherOpen(): Boolean {
+      val shouldLock = shouldLockOnNextLauncherOpen
+      shouldLockOnNextLauncherOpen = false
+      return shouldLock
     }
   }
 

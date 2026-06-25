@@ -26,6 +26,7 @@ class PasswordManagerAutofillService : AutofillService() {
     const val extraAutofillRoles = "com.luisrocha.passwordmanager.AUTOFILL_ROLES"
     const val extraAutofillWebDomain = "com.luisrocha.passwordmanager.AUTOFILL_WEB_DOMAIN"
     const val extraAutofillPackageName = "com.luisrocha.passwordmanager.AUTOFILL_PACKAGE_NAME"
+    const val extraAutofillAppName = "com.luisrocha.passwordmanager.AUTOFILL_APP_NAME"
     const val autofillRouteUri = "password-manager:///autofill-fill"
     const val rolePassword = "password"
     const val roleUsername = "username"
@@ -63,6 +64,7 @@ class PasswordManagerAutofillService : AutofillService() {
   ) {
     val latestStructure = request.fillContexts.lastOrNull()?.structure
     val requestingPackageName = latestStructure?.activityComponent?.packageName.orEmpty()
+    val requestingAppName = appNameForPackage(requestingPackageName)
     if (requestingPackageName == packageName) {
       callback.onSuccess(null)
       return
@@ -80,6 +82,7 @@ class PasswordManagerAutofillService : AutofillService() {
         .orEmpty()
     val hasPasswordField = candidates.any { field -> field.role == rolePassword }
     val fields = candidates.filter { field -> field.isStrongSignal || hasPasswordField }
+    val webDomain = fields.firstNotNullOfOrNull { field -> field.webDomain }.orEmpty()
 
     if (fields.isEmpty()) {
       callback.onSuccess(null)
@@ -102,8 +105,9 @@ class PasswordManagerAutofillService : AutofillService() {
           extraAutofillRoles,
           ArrayList(fields.map { field -> field.role })
       )
-      putExtra(extraAutofillWebDomain, "")
+      putExtra(extraAutofillWebDomain, webDomain)
       putExtra(extraAutofillPackageName, requestingPackageName)
+      putExtra(extraAutofillAppName, requestingAppName)
     }
     val authentication = PendingIntent.getActivity(
         this,
@@ -135,7 +139,12 @@ class PasswordManagerAutofillService : AutofillService() {
     val autofillId = node.autofillId
     val credentialSignal = credentialFieldSignal(node)
     if (autofillId != null && credentialSignal != null) {
-      fields += AutofillField(autofillId, credentialSignal.role, credentialSignal.isStrongSignal)
+      fields += AutofillField(
+          autofillId,
+          credentialSignal.role,
+          credentialSignal.isStrongSignal,
+          node.webDomain
+      )
     }
 
     for (index in 0 until node.childCount) {
@@ -209,6 +218,17 @@ class PasswordManagerAutofillService : AutofillService() {
         metadata.contains("filter")
   }
 
+  private fun appNameForPackage(packageName: String): String {
+    if (packageName.isBlank()) return ""
+
+    return try {
+      val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+      packageManager.getApplicationLabel(applicationInfo).toString()
+    } catch (_: Exception) {
+      ""
+    }
+  }
+
   private fun mutablePendingIntentFlag(): Int {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
       PendingIntent.FLAG_MUTABLE
@@ -220,7 +240,8 @@ class PasswordManagerAutofillService : AutofillService() {
   private data class AutofillField(
       val id: AutofillId,
       val role: String,
-      val isStrongSignal: Boolean
+      val isStrongSignal: Boolean,
+      val webDomain: String?
   )
 
   private data class CredentialFieldSignal(

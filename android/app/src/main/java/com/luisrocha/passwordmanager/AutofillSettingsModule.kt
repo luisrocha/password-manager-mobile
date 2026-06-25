@@ -66,6 +66,10 @@ class AutofillSettingsModule(
           "packageName",
           intent?.getStringExtra(PasswordManagerAutofillService.extraAutofillPackageName).orEmpty()
       )
+      putString(
+          "appName",
+          intent?.getStringExtra(PasswordManagerAutofillService.extraAutofillAppName).orEmpty()
+      )
       putInt("fieldCount", ids.size)
     }
 
@@ -75,6 +79,11 @@ class AutofillSettingsModule(
   @ReactMethod
   fun getAutofillDebugState(promise: Promise) {
     promise.resolve(debugState())
+  }
+
+  @ReactMethod
+  fun consumeShouldLockOnLauncherOpen(promise: Promise) {
+    promise.resolve(MainActivity.consumeShouldLockOnNextLauncherOpen())
   }
 
   @ReactMethod
@@ -171,6 +180,11 @@ class AutofillSettingsModule(
       putString(
           "pendingPackageName",
           pendingIntent?.getStringExtra(PasswordManagerAutofillService.extraAutofillPackageName)
+              .orEmpty()
+      )
+      putString(
+          "pendingAppName",
+          pendingIntent?.getStringExtra(PasswordManagerAutofillService.extraAutofillAppName)
               .orEmpty()
       )
       putBoolean("pendingPresent", pendingIntent != null)
