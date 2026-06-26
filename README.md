@@ -1,50 +1,99 @@
 # Password Manager Mobile
 
-Android-first Expo mobile app for the self-hosted password manager.
+> 🚧 work-in-progress 🚧
 
-## Current Scope
+Android-first mobile app for the self-hosted Password Manager.
 
-- Set up or re-pair this device from the web app instead of generating a new vault key.
-- Work offline from a local encrypted credential cache.
-- Sync with the Rails server on unlock when the network is available.
-- Exclude browser-extension connection and CSV import features.
-- Add Android keyboard suggestions and autofill after the core vault flows are stable.
+The app imports an existing web vault, unlocks it locally, keeps an offline encrypted credential cache, syncs with the Rails server when available, and supports Android Autofill for browser and app login forms.
+
+## Features
+
+- Set up or re-pair a device with a web-generated pairing code.
+- Unlock the imported vault locally with the master password.
+- Browse, search, reveal, copy, create, edit, and delete credentials offline.
+- Queue local changes and sync them when the server is reachable.
+- Resolve sync conflicts on device.
+- Use Android Autofill to fill existing credentials or add a new credential from an app/site login form.
 
 ## Requirements
 
-- Node.js 18 or newer
-- npm
-- Expo CLI through `npx expo`
-- Android Studio or a physical Android device for primary development
+- Node.js 18 or newer.
+- npm.
+- Android Studio, Android SDK, and either an emulator or physical Android device.
+- A running [`password-manager-web`](https://github.com/luisrocha/password-manager) server reachable from the Android device.
 
-## Environment
+## Local Setup
 
-Copy `.env.example` to `.env` for local development and replace placeholders.
-
-## Commands
+Install dependencies:
 
 ```bash
 npm install
+```
+
+Create local environment config:
+
+```bash
+cp .env.example .env
+```
+
+Set `EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL` to the Rails server URL.
+
+HTTP is allowed only in development builds. Non-development builds require HTTPS.
+
+## Run Locally
+
+Start the Android app:
+
+```bash
 npm run android
+```
+
+If native modules changed or the app reports a missing native module such as `QuickBase64`, rebuild the native app:
+
+```bash
+npx expo run:android
+```
+
+Useful checks:
+
+```bash
 npm run typecheck
 npm run style
 npm test
 npm run security
+npm run ci
 ```
 
-## Native Crypto Runtime
+`npm run ci` runs typecheck, style, tests, and `npm audit --audit-level=high`.
 
-Vault crypto needs WebCrypto APIs such as `crypto.getRandomValues` and
-`crypto.subtle`. The app installs `react-native-quick-crypto` lazily before
-running vault crypto operations.
+## Install On Android
 
-Because this is a native module, full crypto diagnostics require a custom Expo
-development build. Expo Go can run the app shell, but it cannot load the native
-crypto runtime. If you see `QuickBase64 could not be found`, you are running a
-native binary that was built before the native crypto modules were installed, or
-you are running Expo Go.
+For an internal APK build with EAS:
 
 ```bash
-npx expo prebuild
-npx expo run:android
+npx eas build --profile preview --platform android
 ```
+
+For a production Android App Bundle:
+
+```bash
+npx eas build --profile production --platform android
+```
+
+Production builds must point at an HTTPS server URL.
+
+## First Use
+
+1. Open the web app and unlock the vault.
+2. Go to `Connected apps`.
+3. Create a mobile pairing code.
+4. Open the mobile app.
+5. Choose `Set up device` and enter the pairing code.
+6. Unlock locally with the vault master password.
+
+## Android Autofill
+
+1. Open the mobile app.
+2. Go to `Autofill settings`.
+3. Open Android settings and select Password Manager as the Autofill provider.
+4. In a browser or app login form, choose Password Manager from the Android Autofill prompt.
