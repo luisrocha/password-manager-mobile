@@ -98,28 +98,28 @@ class AutofillSettingsModule(
     val roles = intent?.autofillRoles().orEmpty()
 
     if (autofillActivity == null) {
-      Log.e(tag, "completeAutofill failed: autofill activity missing. State: ${debugStateString()}")
+      Log.e(tag, "completeAutofill failed: autofill activity missing.")
       promise.reject(
           "autofill_activity_missing",
-          "Autofill activity is not active. State: ${debugStateString()}"
+          "Autofill activity is not active."
       )
       return
     }
 
     if (ids.isEmpty()) {
-      Log.e(tag, "completeAutofill failed: autofill ids missing. State: ${debugStateString()}")
+      Log.e(tag, "completeAutofill failed: autofill ids missing.")
       promise.reject(
           "autofill_ids_missing",
-          "No AutofillId values are available. State: ${debugStateString()}"
+          "No AutofillId values are available."
       )
       return
     }
 
     if (roles.isEmpty()) {
-      Log.e(tag, "completeAutofill failed: autofill roles missing. State: ${debugStateString()}")
+      Log.e(tag, "completeAutofill failed: autofill roles missing.")
       promise.reject(
           "autofill_roles_missing",
-          "No autofill field roles are available. State: ${debugStateString()}"
+          "No autofill field roles are available."
       )
       return
     }
@@ -148,10 +148,10 @@ class AutofillSettingsModule(
         reactContext.currentActivity?.moveTaskToBack(true)
       }
     } catch (exception: Exception) {
-      Log.e(tag, "completeAutofill failed while setting result. State: ${debugStateString()}", exception)
+      Log.e(tag, "completeAutofill failed while setting result.", exception)
       promise.reject(
           "autofill_result_failed",
-          "Failed to return autofill result. State: ${debugStateString()}",
+          "Failed to return autofill result.",
           exception
       )
     }
@@ -204,20 +204,6 @@ class AutofillSettingsModule(
               .orEmpty()
       )
     }
-  }
-
-  private fun debugStateString(): String {
-    val pendingIntent = activeAutofillIntent()
-    val autofillActivity = AutofillActivity.activeActivity()
-
-    return listOf(
-        "autofillActivityPresent=${autofillActivity != null}",
-        "autofillActivityFinishing=${autofillActivity?.isFinishing ?: false}",
-        "currentActivityClass=${reactContext.currentActivity?.javaClass?.simpleName.orEmpty()}",
-        "pendingPresent=${pendingIntent != null}",
-        "pendingFieldCount=${pendingIntent?.autofillIds().orEmpty().size}",
-        "pendingRoleCount=${pendingIntent?.autofillRoles().orEmpty().size}"
-    ).joinToString(", ")
   }
 
   private fun Intent.hasAutofillRequest(): Boolean {

@@ -13,7 +13,6 @@ import {
 
 import {
   completeAutofill,
-  getAutofillDebugState,
   getPendingAutofillRequest,
   type AutofillRequest
 } from "@/autofill/autofillSettings"
@@ -95,14 +94,7 @@ export function AutofillFillScreen({
       } catch (caughtError) {
         setFillingCredentialKey(null)
         setStatus("ready")
-        const debugState = await getAutofillDebugState().catch(() => null)
-        const formattedError = formatAutofillError(stage, caughtError, debugState)
-        console.error("[Autofill] Fill failed.", {
-          error: formatUnknownError(caughtError),
-          nativeState: debugState,
-          stage
-        })
-        setError(formattedError)
+        setError(formatAutofillError(stage, caughtError))
       }
     },
     [onFinished, status]
@@ -382,14 +374,8 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   })
 }
 
-function formatAutofillError(stage: string, error: unknown, debugState: unknown) {
-  return [
-    `Failed at: ${stage}`,
-    `Error: ${formatUnknownError(error)}`,
-    debugState ? `Native state: ${JSON.stringify(debugState, null, 2)}` : null
-  ]
-    .filter(Boolean)
-    .join("\n\n")
+function formatAutofillError(stage: string, error: unknown) {
+  return [`Failed at: ${stage}`, `Error: ${formatUnknownError(error)}`].filter(Boolean).join("\n\n")
 }
 
 function formatUnknownError(error: unknown) {
