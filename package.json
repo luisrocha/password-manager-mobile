@@ -20,7 +20,7 @@
     "@babel/runtime": "7.29.7",
     "@password-manager/vault-crypto": "file:../password-manager-vault-crypto",
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~56.0.11",
+    "expo": "~56.0.12",
     "expo-build-properties": "^56.0.18",
     "expo-clipboard": "~56.0.4",
     "expo-constants": "~56.0.18",
@@ -32,7 +32,7 @@
     "expo-status-bar": "56.0.4",
     "expo-system-ui": "56.0.5",
     "openpgp": "6.3.1",
-    "react": "19.2.3",
+    "react": "19.2.7",
     "react-native": "0.85.3",
     "react-native-argon2": "^4.0.0",
     "react-native-nitro-modules": "^0.35.9",
@@ -46,7 +46,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@react-native/jest-preset": "0.86.0",
+    "@react-native/jest-preset": "0.85.3",
     "@testing-library/react-native": "14.0.0",
     "@types/jest": "29.5.14",
     "@types/react": "19.2.17",
@@ -62,6 +62,8 @@
     "typescript": "6.0.3"
   },
   "overrides": {
-    "form-data": "4.0.6"
+    "form-data": "4.0.6",
+    "js-yaml": "5.1.0",
+    "uuid": "11.1.1"
   }
 }
