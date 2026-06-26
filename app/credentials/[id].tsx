@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard"
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useState } from "react"
 import {
@@ -22,6 +21,7 @@ import {
   type LocalCredential
 } from "@/sync/mobileSync"
 import { guardedPush } from "@/navigation/guardedRouter"
+import { copyWithAutoClear } from "@/security/clipboard"
 import {
   decryptCredentialSecretPayload,
   isVaultUnlocked,
@@ -30,7 +30,6 @@ import {
 } from "@/vault/vaultService"
 
 type DetailStatus = "loading" | "ready" | "locked" | "missing" | "failed"
-const CLIPBOARD_CLEAR_DELAY_MS = 30_000
 
 export default function CredentialDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>()
@@ -134,15 +133,9 @@ export default function CredentialDetailScreen() {
     const payload = await revealSecrets()
     if (!payload) return
 
-    await Clipboard.setStringAsync(payload[field])
+    await copyWithAutoClear(payload[field])
     setCopyStatus(`Copied ${field}`)
     setTimeout(() => setCopyStatus(null), 1200)
-    setTimeout(() => clearClipboardIfUnchanged(payload[field]), CLIPBOARD_CLEAR_DELAY_MS)
-  }
-
-  async function clearClipboardIfUnchanged(value: string) {
-    const currentValue = await Clipboard.getStringAsync()
-    if (currentValue === value) await Clipboard.setStringAsync("")
   }
 
   async function lock() {
