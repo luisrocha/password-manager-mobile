@@ -17,6 +17,7 @@ import {
   getPendingAutofillRequest,
   type AutofillRequest
 } from "@/autofill/autofillSettings"
+import { CredentialFormScreen } from "@/credentials/CredentialFormScreen"
 import { normalizeCredentialDomain } from "@/credentials/domainMatching"
 import {
   credentialUsernameCacheKey,
@@ -50,6 +51,7 @@ export function AutofillFillScreen({
   const [targetName, setTargetName] = useState("")
   const [masterPassword, setMasterPassword] = useState("")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [isAddingCredential, setIsAddingCredential] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [fillingCredentialKey, setFillingCredentialKey] = useState<string | null>(null)
   const [usernameByCredentialKey, setUsernameByCredentialKey] = useState<Record<string, string>>({})
@@ -104,6 +106,17 @@ export function AutofillFillScreen({
       }
     },
     [onFinished, status]
+  )
+  const addCredential = useCallback(async () => {
+    Keyboard.dismiss()
+    setIsAddingCredential(true)
+  }, [])
+  const saveAndFillNewCredential = useCallback(
+    async ({ secret }: { secret: { password: string; username: string } }) => {
+      await withTimeout(completeAutofill(secret.username, secret.password), 5000)
+      onFinished?.()
+    },
+    [onFinished]
   )
   const renderCredential = useCallback(
     ({ item }: { item: AutofillCredential }) => (
@@ -210,6 +223,17 @@ export function AutofillFillScreen({
     )
   }
 
+  if (isAddingCredential) {
+    return (
+      <CredentialFormScreen
+        initialValues={request ? getNewCredentialInitialValues(request) : undefined}
+        mode="create"
+        onCancel={() => setIsAddingCredential(false)}
+        onSaved={saveAndFillNewCredential}
+      />
+    )
+  }
+
   async function unlock() {
     if (!masterPassword || status !== "locked") return
 
@@ -263,6 +287,10 @@ export function AutofillFillScreen({
               </Pressable>
             ) : null}
           </View>
+
+          <Pressable accessibilityRole="button" onPress={addCredential} style={styles.addButton}>
+            <Text style={styles.addButtonText}>Add item</Text>
+          </Pressable>
 
           {visibleCredentials.length > 0 ? (
             <FlatList
@@ -499,6 +527,26 @@ function getRequestDisplayName(request: AutofillRequest) {
   return request.packageName
 }
 
+function getNewCredentialInitialValues(request: AutofillRequest) {
+  if (request.webDomain) {
+    const domain = normalizeCredentialDomain(request.webDomain) || request.webDomain
+    const webUrl = webBaseUrl(request.webScheme, domain)
+
+    return {
+      displayName: domain,
+      domain: webUrl
+    }
+  }
+
+  return { displayName: getRequestDisplayName(request) }
+}
+
+function webBaseUrl(scheme: string, domain: string) {
+  const normalizedScheme = scheme.trim() || "https"
+
+  return `${normalizedScheme}://${domain}`
+}
+
 function getAutofillCopy(status: Status, requestingName: string, targetName: string) {
   if (status === "locked") {
     return {
@@ -650,6 +698,18 @@ const styles = StyleSheet.create({
     color: "#fff8ef",
     fontSize: 16,
     fontWeight: "800"
+  },
+  addButton: {
+    alignItems: "center",
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    backgroundColor: "#efe1c8"
+  },
+  addButtonText: {
+    color: "#8d4a30",
+    fontSize: 15,
+    fontWeight: "900"
   },
   disabledButton: {
     opacity: 0.55

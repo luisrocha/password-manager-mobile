@@ -22,7 +22,8 @@ import {
 import {
   decryptCredentialSecretPayload,
   encryptCredentialSecretPayload,
-  isVaultUnlocked
+  isVaultUnlocked,
+  type CredentialSecretPayload
 } from "@/vault/vaultService"
 import { normalizeCredentialDomain } from "./domainMatching"
 import {
@@ -50,18 +51,33 @@ const CREDENTIAL_CATEGORIES: { label: string; value: CredentialCategory }[] = [
 
 interface CredentialFormScreenProps {
   credentialId?: string
+  initialValues?: {
+    displayName?: string
+    domain?: string
+  }
   mode: FormMode
+  onCancel?: () => void
+  onSaved?: (result: {
+    credential: Awaited<ReturnType<typeof createLocalCredential>>
+    secret: CredentialSecretPayload
+  }) => Promise<void> | void
 }
 
-export function CredentialFormScreen({ credentialId, mode }: CredentialFormScreenProps) {
+export function CredentialFormScreen({
+  credentialId,
+  initialValues,
+  mode,
+  onCancel,
+  onSaved
+}: CredentialFormScreenProps) {
   const displayNameInputRef = useRef<TextInput>(null)
   const domainInputRef = useRef<TextInput>(null)
   const generatedPasswordLengthInputRef = useRef<TextInput>(null)
   const notesInputRef = useRef<TextInput>(null)
   const passwordInputRef = useRef<TextInput>(null)
   const usernameInputRef = useRef<TextInput>(null)
-  const [displayName, setDisplayName] = useState("")
-  const [domain, setDomain] = useState("")
+  const [displayName, setDisplayName] = useState(initialValues?.displayName ?? "")
+  const [domain, setDomain] = useState(initialValues?.domain ?? "")
   const [category, setCategory] = useState<CredentialCategory>("login")
   const [isCategoryOpen, setIsCategoryOpen] = useState(false)
   const [username, setUsername] = useState("")
@@ -159,11 +175,12 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
         return
       }
 
-      const encryptedSecretPayload = await encryptCredentialSecretPayload({
+      const secretPayload = {
         notes: validatedForm.data.notes,
         password: validatedForm.data.password,
         username: validatedForm.data.username
-      })
+      }
+      const encryptedSecretPayload = await encryptCredentialSecretPayload(secretPayload)
       const credentialPayload = {
         category: validatedForm.data.category,
         displayName: validatedForm.data.displayName,
@@ -179,6 +196,11 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
       } else {
         const createdCredential = await createLocalCredential(credentialPayload)
         void syncEncryptedCredentialsInBackground()
+        if (onSaved) {
+          await onSaved({ credential: createdCredential, secret: secretPayload })
+          return
+        }
+
         router.replace(`/credentials/${encodeURIComponent(createdCredential.id)}`)
       }
     } catch {
@@ -237,7 +259,7 @@ export function CredentialFormScreen({ credentialId, mode }: CredentialFormScree
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={onCancel ?? (() => router.back())}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>Back</Text>

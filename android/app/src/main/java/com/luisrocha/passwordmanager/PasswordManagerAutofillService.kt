@@ -25,6 +25,7 @@ class PasswordManagerAutofillService : AutofillService() {
     const val extraAutofillIds = "com.luisrocha.passwordmanager.AUTOFILL_IDS"
     const val extraAutofillRoles = "com.luisrocha.passwordmanager.AUTOFILL_ROLES"
     const val extraAutofillWebDomain = "com.luisrocha.passwordmanager.AUTOFILL_WEB_DOMAIN"
+    const val extraAutofillWebScheme = "com.luisrocha.passwordmanager.AUTOFILL_WEB_SCHEME"
     const val extraAutofillPackageName = "com.luisrocha.passwordmanager.AUTOFILL_PACKAGE_NAME"
     const val extraAutofillAppName = "com.luisrocha.passwordmanager.AUTOFILL_APP_NAME"
     const val autofillRouteUri = "password-manager:///autofill-fill"
@@ -71,18 +72,20 @@ class PasswordManagerAutofillService : AutofillService() {
     }
 
     val candidates = latestStructure
-        ?.windowNodeCount
-        ?.let { windowNodeCount ->
-          buildList {
-            for (index in 0 until windowNodeCount) {
-              collectFillableFields(latestStructure.getWindowNodeAt(index).rootViewNode, this)
-            }
+      ?.windowNodeCount
+      ?.let { windowNodeCount ->
+        buildList {
+          for (index in 0 until windowNodeCount) {
+            val windowNode = latestStructure.getWindowNodeAt(index)
+            collectFillableFields(windowNode.rootViewNode, this)
           }
         }
-        .orEmpty()
+      }
+      .orEmpty()
     val hasPasswordField = candidates.any { field -> field.role == rolePassword }
     val fields = candidates.filter { field -> field.isStrongSignal || hasPasswordField }
     val webDomain = fields.firstNotNullOfOrNull { field -> field.webDomain }.orEmpty()
+    val webScheme = fields.firstNotNullOfOrNull { field -> field.webScheme }.orEmpty()
 
     if (fields.isEmpty()) {
       callback.onSuccess(null)
@@ -106,6 +109,7 @@ class PasswordManagerAutofillService : AutofillService() {
           ArrayList(fields.map { field -> field.role })
       )
       putExtra(extraAutofillWebDomain, webDomain)
+      putExtra(extraAutofillWebScheme, webScheme)
       putExtra(extraAutofillPackageName, requestingPackageName)
       putExtra(extraAutofillAppName, requestingAppName)
     }
@@ -143,7 +147,8 @@ class PasswordManagerAutofillService : AutofillService() {
           autofillId,
           credentialSignal.role,
           credentialSignal.isStrongSignal,
-          node.webDomain
+          node.webDomain,
+          node.webScheme
       )
     }
 
@@ -241,7 +246,8 @@ class PasswordManagerAutofillService : AutofillService() {
       val id: AutofillId,
       val role: String,
       val isStrongSignal: Boolean,
-      val webDomain: String?
+      val webDomain: String?,
+      val webScheme: String?
   )
 
   private data class CredentialFieldSignal(

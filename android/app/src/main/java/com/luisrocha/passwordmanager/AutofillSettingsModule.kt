@@ -63,6 +63,10 @@ class AutofillSettingsModule(
           intent?.getStringExtra(PasswordManagerAutofillService.extraAutofillWebDomain).orEmpty()
       )
       putString(
+          "webScheme",
+          intent?.getStringExtra(PasswordManagerAutofillService.extraAutofillWebScheme).orEmpty()
+      )
+      putString(
           "packageName",
           intent?.getStringExtra(PasswordManagerAutofillService.extraAutofillPackageName).orEmpty()
       )
@@ -192,6 +196,11 @@ class AutofillSettingsModule(
       putString(
           "pendingWebDomain",
           pendingIntent?.getStringExtra(PasswordManagerAutofillService.extraAutofillWebDomain)
+              .orEmpty()
+      )
+      putString(
+          "pendingWebScheme",
+          pendingIntent?.getStringExtra(PasswordManagerAutofillService.extraAutofillWebScheme)
               .orEmpty()
       )
     }

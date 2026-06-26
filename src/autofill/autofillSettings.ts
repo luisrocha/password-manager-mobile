@@ -13,6 +13,7 @@ export interface AutofillRequest {
   fieldCount: number
   packageName: string
   webDomain: string
+  webScheme: string
 }
 
 export interface AutofillDebugState {
@@ -28,6 +29,7 @@ export interface AutofillDebugState {
   pendingPresent: boolean
   pendingRoleCount: number
   pendingWebDomain: string
+  pendingWebScheme: string
 }
 
 const autofillSettingsModule = NativeModules.PasswordManagerAutofillSettings as
