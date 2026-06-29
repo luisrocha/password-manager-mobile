@@ -3,26 +3,6 @@
     "name": "Password Manager",
     "slug": "password-manager-mobile",
     "version": "1.0.0-beta.1",
-    "orientation": "portrait",
-    "scheme": "password-manager",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "android": {
-      "package": "com.luisrocha.passwordmanager",
-      "adaptiveIcon": {
-        "backgroundColor": "#101820"
-      }
-    },
-    "plugins": [
-      "expo-router",
-      "react-native-quick-crypto",
-      [
-        "expo-secure-store",
-        {
-          "configureAndroidBackup": false
-        }
-      ]
-    ],
     "experiments": {
       "typedRoutes": true
     },
@@ -33,9 +13,6 @@
       "eas": {
         "projectId": "dc94c8e3-0ecc-40fd-a334-a78bab2cc563"
       }
-    },
-    "ios": {
-      "bundleIdentifier": "com.luisrocha.passwordmanager"
     },
     "owner": "luismprocha"
   }
