@@ -1,0 +1,43 @@
+name: Android Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          script: |
+            ./android/gradlew -p android :app:assembleDebug
+            npx expo start --dev-client --localhost --port 8081 > /tmp/password-manager-metro.log 2>&1 &
+            adb install android/app/build/outputs/apk/debug/app-debug.apk
+            adb shell monkey -p com.luisrocha.passwordmanager 1
+            adb shell pidof com.luisrocha.passwordmanager
+            sleep 10
+            adb shell uiautomator dump /sdcard/window.xml
+            adb exec-out cat /sdcard/window.xml | grep -E "Set up device|Unlock your vault"
+            adb shell am start -a android.intent.action.VIEW -d "password-manager://import-vault?mode=setup" com.luisrocha.passwordmanager
+            sleep 3
+            adb shell uiautomator dump /sdcard/window.xml
+            adb exec-out cat /sdcard/window.xml | grep "Set up device"

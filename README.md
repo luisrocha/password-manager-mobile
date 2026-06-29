@@ -39,6 +39,9 @@ cp .env.example .env
 Set `EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL` to the Rails server URL.
 
 HTTP is allowed only in development builds. Non-development builds require HTTPS.
+For HTTPS local testing, run the web app through its Docker/Caddy setup, trust
+the local Caddy certificate on the Android device, and point the mobile app at
+the HTTPS host.
 
 ## Run Locally
 
@@ -68,16 +71,30 @@ npm run ci
 
 ## Install On Android
 
+Install locally to a connected device or emulator:
+
+```bash
+npx expo run:android
+```
+
+For EAS builds, install the EAS CLI and link the project once:
+
+```bash
+npx --yes eas-cli@latest init
+```
+
 For an internal APK build with EAS:
 
 ```bash
-npx eas build --profile preview --platform android
+npx --yes eas-cli@latest build --profile preview --platform android
 ```
+
+After the build finishes, open the EAS build link on the Android device and install the APK.
 
 For a production Android App Bundle:
 
 ```bash
-npx eas build --profile production --platform android
+npx --yes eas-cli@latest build --profile production --platform android
 ```
 
 Production builds must point at an HTTPS server URL.
