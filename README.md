@@ -89,8 +89,6 @@ For an internal APK build with EAS:
 npx --yes eas-cli@latest build --profile preview --platform android
 ```
 
-After the build finishes, open the EAS build link on the Android device and install the APK.
-
 For a production Android App Bundle:
 
 ```bash
