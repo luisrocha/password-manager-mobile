@@ -22,4 +22,8 @@ describe("env", () => {
       )
     ).toThrow("HTTPS is required outside development builds.")
   })
+
+  it("requires an explicit API base URL outside development builds", () => {
+    expect(() => loadEnv({}, { isDevelopment: false })).toThrow()
+  })
 })

@@ -3,6 +3,11 @@ import { z } from "zod"
 declare const __DEV__: boolean | undefined
 
 type EnvSource = Record<string, string | undefined>
+const DEFAULT_DEVELOPMENT_API_BASE_URL = "https://vault.localhost"
+const defaultEnvSource: EnvSource = {
+  EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL:
+    process.env.EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL
+}
 
 function isDevelopmentBuild() {
   return typeof __DEV__ !== "undefined" && __DEV__
@@ -27,11 +32,15 @@ function createEnvSchema(isDevelopment: boolean) {
 }
 
 export function loadEnv(
-  source: EnvSource = process.env,
+  source: EnvSource = defaultEnvSource,
   options: { isDevelopment?: boolean } = {}
 ) {
-  return createEnvSchema(options.isDevelopment ?? isDevelopmentBuild()).parse({
-    apiBaseUrl: source.EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL ?? "https://vault.localhost"
+  const isDevelopment = options.isDevelopment ?? isDevelopmentBuild()
+
+  return createEnvSchema(isDevelopment).parse({
+    apiBaseUrl:
+      source.EXPO_PUBLIC_PASSWORD_MANAGER_API_BASE_URL ??
+      (isDevelopment ? DEFAULT_DEVELOPMENT_API_BASE_URL : undefined)
   })
 }
 
